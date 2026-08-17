@@ -10,6 +10,7 @@ import typing
 
 import imap_data_access
 import numpy
+import tqdm
 
 
 def yearmonth_iterator() -> list[tuple[int, int]]:
@@ -31,10 +32,15 @@ def yearmonth_iterator() -> list[tuple[int, int]]:
 # into chunks, then concatenates the output. Project for later.
 def all_latest_files() -> dict[str, list[dict[str, typing.Any]]]:
     """Return latest version of all files, all instruments, all dates."""
+    query_tups = [
+        (inst, yyyy, mm)
+        for yyyy, mm in yearmonth_iterator()
+        for inst in imap_data_access.VALID_INSTRUMENTS
+        if inst not in ("ialirt", "spacecraft", "l1const")
+    ]
     return {
         inst: [
             fileinfo
-            for yyyy, mm in yearmonth_iterator()
             for fileinfo in imap_data_access.query(
                 instrument=inst,
                 start_date=f"{yyyy}{mm:02}01",
@@ -45,8 +51,7 @@ def all_latest_files() -> dict[str, list[dict[str, typing.Any]]]:
                 version="latest",
             )
         ]
-        for inst in imap_data_access.VALID_INSTRUMENTS
-        if inst not in ("ialirt", "spacecraft", "l1const")
+        for inst, yyyy, mm in tqdm.tqdm(query_tups, desc="Making queries: ")
     }
 
 
