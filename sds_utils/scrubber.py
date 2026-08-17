@@ -38,10 +38,10 @@ def all_latest_files() -> dict[str, list[dict[str, typing.Any]]]:
         for inst in imap_data_access.VALID_INSTRUMENTS
         if inst not in ("ialirt", "spacecraft", "l1const")
     ]
-    return {
-        inst: [
-            fileinfo
-            for fileinfo in imap_data_access.query(
+    results = collections.defaultdict(list)
+    for inst, yyyy, mm in tqdm.tqdm(query_tups, desc="Making queries: "):
+        results[inst].extend(
+            imap_data_access.query(
                 instrument=inst,
                 start_date=f"{yyyy}{mm:02}01",
                 end_date=(
@@ -50,9 +50,8 @@ def all_latest_files() -> dict[str, list[dict[str, typing.Any]]]:
                 ).strftime("%Y%m%d"),
                 version="latest",
             )
-        ]
-        for inst, yyyy, mm in tqdm.tqdm(query_tups, desc="Making queries: ")
-    }
+        )
+    return results
 
 
 def break_by_logical_source(
