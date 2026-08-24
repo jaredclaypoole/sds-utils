@@ -15,7 +15,12 @@ with app.setup:
     from pandas.api.typing import NAType
     import marimo as mo
 
+    # from tqdm.contrib.concurrent import thread_map
+    from moutils.concurrent import thread_map
+
     from scrubber import DAILY_INSTRUMENTS
+    # from reconcile import latest_attempt_failed_after_previous_success_cached
+    from reconcile import latest_attempt_failed_after_previous_success_db
 
 
 @app.cell
@@ -25,8 +30,8 @@ def _():
     fpath_missing_days = scrubber_base_dir / "missing_days.csv"
     fpath_missing_repoints = scrubber_base_dir / "missing_repoints.csv"
 
-    dashboard_base_dir = Path("dashboard-output/august-only")
-    fpath_dashboard_output = dashboard_base_dir / "imap-run-status-all-rows-20260817T200549Z.csv"
+    dashboard_base_dir = Path("dashboard-output/july-only")
+    fpath_dashboard_output = dashboard_base_dir / "imap-run-status-all-rows-20260820T172016Z.csv"
     return fpath_dashboard_output, fpath_missing_days, fpath_missing_repoints
 
 
@@ -78,6 +83,7 @@ def post_process_dashboard(df: pd.DataFrame) -> pd.DataFrame:
     df['Date'] = df.Partition.map(extract_day)
     df['Type'] = df.Partition.map(extract_desc)
     df['Repoint'] = df.Partition.map(extract_repoint_number)
+    df['Asset'] = df.Instrument + "_" + df.Level + "_" + df.Descriptor
     return df
 
 
@@ -128,7 +134,8 @@ def _(mddf_days, missing_days_df):
 def _(days_index_cols, joined_df_days):
     _df = joined_df_days
     _df = _df.reset_index()
-    _df = _df[_df.Date >= datetime.date(2026, 8, 1)]
+    _df = _df[_df.Date >= datetime.date(2026, 7, 1)]
+    _df = _df[_df.Date < datetime.date(2026, 8, 1)]
     _df = _df[_df.from_dashboard != _df.from_scrubber]
     print(f'len(df)={len(_df)!r}')
     days_index_not_in_scrubber = _df.set_index(days_index_cols).index
@@ -140,7 +147,8 @@ def _(days_index_cols, joined_df_days):
 @app.cell
 def _(missing_days_df):
     _df = missing_days_df
-    _df = _df[_df.Date >= datetime.date(2026, 8, 1)]
+    _df = _df[_df.Date >= datetime.date(2026, 7, 1)]
+    _df = _df[_df.Date < datetime.date(2026, 8, 1)]
     print(f'len(df)={len(_df)!r}')
     _df;
     return
@@ -236,10 +244,9 @@ def _(date_ranges, ddf_days_not_in_scrubber):
     _df = _df[_mask]
     _mask = _df.date_ranges.map(lambda r: len(r) > 1 or r[0][1] != end_date)
     _df = _df[_mask]
-    # with pd.option_context('display.max_colwidth', None):
-    #     display(_df)
+    ddf_days_not_in_scrubber_filtered = _df
     _df
-    return
+    return (ddf_days_not_in_scrubber_filtered,)
 
 
 @app.cell
@@ -259,7 +266,9 @@ def _(dashboard_df, joined_df_repoints, repoints_index_cols):
     _df = joined_df_repoints
     _df = _df.reset_index()
     _min_repoint = dashboard_df.Repoint.min()
+    _max_repoint = dashboard_df.Repoint.max()
     _df = _df[_df.Repoint >= _min_repoint]
+    _df = _df[_df.Repoint <= _max_repoint]
     _df = _df[_df.from_dashboard != _df.from_scrubber]
     print(f'len(df)={len(_df)!r}')
     repoints_index_not_in_scrubber = _df.set_index(repoints_index_cols).index
@@ -315,10 +324,28 @@ def _(ddf_repoints_not_in_scrubber, partition_ranges):
             return True
         return ranges[0][-1] != max_repoint
     _df = _df[_df.repoint_ranges.map(f_mask)]
+
+    _df = _df.reset_index()
+
+    _levels_to_exclude = set("l1a l1b".split())
+    _mask = (
+        (_df.Instrument == "ultra")
+        & 
+        _df.Level.map(lambda s: s in _levels_to_exclude)
+        & 
+        _df.repoint_ranges.map(lambda rr: rr == [(295, 300)])
+    )
+    _df = _df[~_mask]
+
+    _df = _df.sort_values(by="Instrument Level Descriptor".split())
+
+
+
     # with pd.option_context('display.max_colwidth', None):
     #     display(_df)
+
     _df
-    return
+    return (ddf_4,)
 
 
 @app.cell(hide_code=True)
@@ -338,6 +365,66 @@ def _():
     mo.md(r"""
  
     """)
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _(ddf_4):
+    # _df = ddf_4
+    # _df = _df[:200]
+    # _assets = list(_df.Asset)
+    # _partitions = list(_df.Partition)
+    # thread_map(
+    #     lambda tup: latest_attempt_failed_after_previous_success_db(*tup),
+    #     list(zip(_assets, _partitions, strict=True)),
+    #     max_workers=2,
+    # )
+    return
+
+
+@app.cell
+def _():
+    # _df = ddf_4
+    # # _df = ddf_days_not_in_scrubber_filtered
+    # _df = _df[:20]
+    # _assets = list(_df.Asset)
+    # _partitions = list(_df.Partition)
+    # _the_iter = list(zip(_assets, _partitions, strict=True))
+
+    # print(len(_the_iter))
+
+    # # for _asset, _partition in mo.status.progress_bar(_the_iter):
+    # for _asset, _partition in _the_iter:
+    #     break
+    # # _dg_source.latest_attempt_failed_after_previous_success(_asset, _partition)
+    # latest_attempt_failed_after_previous_success_db(_asset, _partition)
+    return
+
+
+@app.cell
+def _(ddf_days_not_in_scrubber_filtered):
+    _df = ddf_days_not_in_scrubber_filtered
+    _df
+    return
+
+
+@app.cell
+def _(ddf_4):
+    _to_write = False
+    _df = ddf_4
+    if _to_write:
+        pd.DataFrame.to_csv(_df, "temp.csv")
+    # _df
+    return
+
+
+@app.cell
+def _():
     return
 
 
