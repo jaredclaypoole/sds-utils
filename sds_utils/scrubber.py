@@ -13,6 +13,9 @@ import numpy
 import tqdm
 
 
+DAILY_INSTRUMENTS = ("codice", "hit", "mag", "swapi", "swe")
+
+
 def yearmonth_iterator() -> list[tuple[int, int]]:
     """Return (yyyy, mm) pairs for entire history of mission."""
     start = (2025, 9)
@@ -160,8 +163,7 @@ def scrubber() -> None:
         for k in sorted(missing):
             for repoint in missing[k]:
                 writer.writerow([*list(k), repoint])
-    daily_instruments = ("codice", "hit", "mag", "swapi", "swe")
-    latest_daily_files = {k: v for k, v in latest.items() if k[0] in daily_instruments}
+    latest_daily_files = {k: v for k, v in latest.items() if k[0] in DAILY_INSTRUMENTS}
     missing = {k: missing_days(v) for k, v in latest_daily_files.items()}  # type: ignore[misc]
     missing = combine_missing(missing)
     with open("missing_days.csv", "w") as csvfile:
