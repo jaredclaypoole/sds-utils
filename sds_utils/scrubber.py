@@ -156,7 +156,7 @@ def scrubber() -> None:
         k: v for k, v in latest.items() if v and v[0].get("repointing") is not None
     }
     missing = {k: missing_repoints(v) for k, v in latest_repoint_files.items()}
-    missing = combine_missing(missing)
+    # missing = combine_missing(missing)
     with open("missing_repoints.csv", "w") as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(["Instrument", "Level", "Descriptor", "Repoint"])
@@ -165,7 +165,7 @@ def scrubber() -> None:
                 writer.writerow([*list(k), repoint])
     latest_daily_files = {k: v for k, v in latest.items() if k[0] in DAILY_INSTRUMENTS}
     missing = {k: missing_days(v) for k, v in latest_daily_files.items()}  # type: ignore[misc]
-    missing = combine_missing(missing)
+    # missing = combine_missing(missing)
     with open("missing_days.csv", "w") as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(["Instrument", "Level", "Descriptor", "Date"])
