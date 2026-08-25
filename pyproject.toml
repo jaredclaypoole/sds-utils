@@ -43,6 +43,7 @@ repository = "https://github.com/IMAP-Science-Operations-Center/sds-utils"
 # ------------
 
 [project.optional-dependencies]
+dashboard = ["nicegui>=3.16.0,<4.0.0", "ariadne-codegen>=0.18.0,<0.19.0"]
 dev = ["pre-commit>=3.3.3,<4", "ruff==0.15.2", "mypy==1.10.1"]
 doc = ["numpydoc>=1.5.0,<2", "pydata-sphinx-theme", "sphinx", "sphinxcontrib-openapi>=0.8.3,<0.9"]
 test = ["pytest>=6.2.5", "pytest-cov>=4.0.0,<5", "pytest-xdist>=3.2,<4"]
@@ -104,3 +105,14 @@ disable_error_code = ['import-not-found', # Unable to locate module or package s
 strict = true
 explicit_package_bases = true
 exclude = ["test_*"]
+
+[tool.ariadne-codegen]
+remote_schema_url = "${DAGSTER_BASE_URL}/graphql"
+queries_path = "sds_utils/dashboard/graphql"
+target_package_name = "dagster_graphql_client"
+target_package_path = "sds_utils/dashboard"
+client_name = "DagsterGraphQLClient"
+async_client = false
+include_all_inputs = false
+include_all_enums = false
+include_comments = "none"  # prevent dagster url from being put in source file comments
