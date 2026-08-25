@@ -50,6 +50,10 @@ doc = ["numpydoc>=1.5.0,<2", "pydata-sphinx-theme", "sphinx", "sphinxcontrib-ope
 test = ["pytest>=6.2.5", "pytest-cov>=4.0.0,<5", "pytest-xdist>=3.2,<4"]
 
 
+[project.scripts]
+ariadne-codegen = "sds_utils.dashboard.codegen:main"
+
+
 # Tool settings
 # -------------
 
