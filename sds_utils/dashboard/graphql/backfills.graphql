@@ -1,0 +1,99 @@
+query Backfills(
+  $limit: Int!
+  $cursor: String
+  $filters: BulkActionsFilter
+) {
+  partitionBackfillsOrError(
+    limit: $limit
+    cursor: $cursor
+    filters: $filters
+  ) {
+    __typename
+    ... on PartitionBackfills {
+      results {
+        id
+        status
+        title
+        description
+        creationTime
+        endTime
+        numPartitions
+        isAssetBackfill
+      }
+    }
+    ... on PythonError {
+      message
+    }
+  }
+}
+
+query BackfillDetails($backfillId: String!) {
+  partitionBackfillOrError(backfillId: $backfillId) {
+    __typename
+    ... on PartitionBackfill {
+      id
+      status
+      title
+      description
+      creationTime
+      endTime
+      numPartitions
+      partitionNames
+      isAssetBackfill
+      assetBackfillData {
+        assetBackfillStatuses {
+          __typename
+          ... on AssetPartitionsStatusCounts {
+            assetKey {
+              path
+            }
+            numPartitionsTargeted
+            numPartitionsInProgress
+            numPartitionsMaterialized
+            numPartitionsFailed
+          }
+          ... on UnpartitionedAssetStatus {
+            assetKey {
+              path
+            }
+            inProgress
+            materialized
+            failed
+          }
+        }
+      }
+    }
+    ... on BackfillNotFoundError {
+      message
+    }
+    ... on PythonError {
+      message
+    }
+  }
+}
+
+query BackfillRuns($backfillId: String!, $runLimit: Int!) {
+  partitionBackfillOrError(backfillId: $backfillId) {
+    __typename
+    ... on PartitionBackfill {
+      id
+      runs(limit: $runLimit) {
+        runId
+        status
+        assetSelection {
+          path
+        }
+        tags {
+          key
+          value
+        }
+      }
+    }
+    ... on BackfillNotFoundError {
+      message
+    }
+    ... on PythonError {
+      message
+    }
+  }
+}

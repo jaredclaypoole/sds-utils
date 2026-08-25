@@ -1,0 +1,17 @@
+query AssetRecords($cursor: String, $limit: Int!) {
+  assetRecordsOrError(cursor: $cursor, limit: $limit) {
+    __typename
+    ... on AssetRecordConnection {
+      assets {
+        key {
+          path
+        }
+      }
+      cursor
+    }
+    ... on PythonError {
+      message
+      stack
+    }
+  }
+}

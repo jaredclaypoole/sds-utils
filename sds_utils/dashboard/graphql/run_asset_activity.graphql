@@ -1,0 +1,81 @@
+query RunAssetActivity($runId: ID!, $cursor: String, $limit: Int!) {
+  runOrError(runId: $runId) {
+    __typename
+    ... on Run {
+      eventConnection(afterCursor: $cursor, limit: $limit) {
+        events {
+          __typename
+          ... on MaterializationEvent {
+            runId
+            stepKey
+            timestamp
+            partition
+            assetKey {
+              path
+            }
+          }
+          ... on FailedToMaterializeEvent {
+            runId
+            stepKey
+            timestamp
+            partition
+            assetKey {
+              path
+            }
+            materializationFailureType
+            materializationFailureReason
+            metadataEntries {
+              __typename
+              label
+              ... on TextMetadataEntry {
+                text
+              }
+            }
+          }
+          ... on ObservationEvent {
+            runId
+            stepKey
+            timestamp
+            partition
+            assetKey {
+              path
+            }
+            metadataEntries {
+              __typename
+              label
+              ... on TextMetadataEntry {
+                text
+              }
+            }
+          }
+          ... on AssetMaterializationPlannedEvent {
+            timestamp
+            assetKey {
+              path
+            }
+          }
+          ... on RunFailureEvent {
+            runId
+            stepKey
+            timestamp
+          }
+          ... on LogMessageEvent {
+            runId
+            stepKey
+            timestamp
+            message
+          }
+        }
+        cursor
+        hasMore
+      }
+    }
+    ... on RunNotFoundError {
+      message
+    }
+    ... on PythonError {
+      message
+      stack
+    }
+  }
+}

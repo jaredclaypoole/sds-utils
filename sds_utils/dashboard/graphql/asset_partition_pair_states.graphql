@@ -1,0 +1,21 @@
+query AssetPartitionPairStates(
+  $assetKeys: [AssetKeyInput!]!
+  $partitions: [String!]!
+  $partition: String!
+) {
+  assetNodes(assetKeys: $assetKeys) {
+    assetKey { path }
+    latestMaterializationByPartition(partitions: $partitions) {
+      runId
+      timestamp
+      partition
+      assetKey { path }
+    }
+    latestRunForPartition(partition: $partition) {
+      runId
+      status
+      updateTime
+      assetSelection { path }
+    }
+  }
+}

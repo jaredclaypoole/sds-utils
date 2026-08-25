@@ -1,0 +1,63 @@
+query AssetPartitionState($assetKey: AssetKeyInput!) {
+  assetNodeOrError(assetKey: $assetKey) {
+    __typename
+    ... on AssetNode {
+      assetKey {
+        path
+      }
+      partitionKeys
+      partitionDefinition {
+        dimensionTypes {
+          name
+          isPrimaryDimension
+        }
+      }
+      partitionKeysByDimension {
+        name
+        partitionKeys
+      }
+      assetPartitionStatuses {
+        __typename
+        ... on DefaultPartitionStatuses {
+          materializedPartitions
+          materializingPartitions
+          failedPartitions
+          unmaterializedPartitions
+        }
+        ... on TimePartitionStatuses {
+          ranges {
+            startKey
+            endKey
+            status
+          }
+        }
+        ... on MultiPartitionStatuses {
+          primaryDimensionName
+          ranges {
+            primaryDimStartKey
+            primaryDimEndKey
+            secondaryDim {
+              __typename
+              ... on DefaultPartitionStatuses {
+                materializedPartitions
+                materializingPartitions
+                failedPartitions
+                unmaterializedPartitions
+              }
+              ... on TimePartitionStatuses {
+                ranges {
+                  startKey
+                  endKey
+                  status
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    ... on AssetNotFoundError {
+      message
+    }
+  }
+}

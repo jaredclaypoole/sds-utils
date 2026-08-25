@@ -1,0 +1,26 @@
+query PartitionRuns($partition: String!, $cursor: String, $limit: Int!) {
+  runsOrError(
+    filter: {tags: [{key: "dagster/partition", value: $partition}]}
+    cursor: $cursor
+    limit: $limit
+  ) {
+    __typename
+    ... on Runs {
+      results {
+        runId
+        status
+        updateTime
+        assetSelection {
+          path
+        }
+      }
+    }
+    ... on InvalidPipelineRunsFilterError {
+      message
+    }
+    ... on PythonError {
+      message
+      stack
+    }
+  }
+}

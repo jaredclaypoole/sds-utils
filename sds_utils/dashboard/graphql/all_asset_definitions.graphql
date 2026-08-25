@@ -1,0 +1,9 @@
+query AllAssetDefinitions {
+  assetNodes {
+    assetKey {
+      path
+    }
+    isPartitioned
+    partitionKeys
+  }
+}

@@ -1,0 +1,17 @@
+query AssetStatus($assetKeys: [AssetKeyInput!]!) {
+  assetNodes(assetKeys: $assetKeys, loadMaterializations: true) {
+    assetKey {
+      path
+    }
+    assetMaterializations(limit: 1) {
+      timestamp
+      runId
+    }
+    partitionStats {
+      numPartitions
+      numMaterialized
+      numFailed
+      numMaterializing
+    }
+  }
+}

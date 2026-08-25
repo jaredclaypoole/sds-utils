@@ -1,0 +1,35 @@
+query RecentAssetActivity(
+  $since: Float!
+  $until: Float!
+  $cursor: String
+  $limit: Int!
+) {
+  runsOrError(
+    filter: {updatedAfter: $since, updatedBefore: $until}
+    cursor: $cursor
+    limit: $limit
+  ) {
+    __typename
+    ... on Runs {
+      results {
+        runId
+        status
+        updateTime
+        tags {
+          key
+          value
+        }
+        assetSelection {
+          path
+        }
+      }
+    }
+    ... on InvalidPipelineRunsFilterError {
+      message
+    }
+    ... on PythonError {
+      message
+      stack
+    }
+  }
+}

@@ -1,0 +1,26 @@
+query RecentFailedRuns($since: Float!, $cursor: String, $limit: Int!) {
+  runsOrError(
+    filter: {statuses: [FAILURE], updatedAfter: $since}
+    cursor: $cursor
+    limit: $limit
+  ) {
+    __typename
+    ... on Runs {
+      results {
+        runId
+        jobName
+        status
+        startTime
+        endTime
+        updateTime
+      }
+    }
+    ... on InvalidPipelineRunsFilterError {
+      message
+    }
+    ... on PythonError {
+      message
+      stack
+    }
+  }
+}

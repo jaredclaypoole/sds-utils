@@ -1,0 +1,71 @@
+query AssetPartitionHistory(
+  $assetKey: AssetKeyInput!
+  $partitions: [String!]
+  $cursor: String
+  $limit: Int!
+) {
+  assetOrError(assetKey: $assetKey) {
+    __typename
+    ... on Asset {
+      assetEventHistory(
+        partitions: $partitions
+        eventTypeSelectors: [
+          MATERIALIZATION
+          FAILED_TO_MATERIALIZE
+          OBSERVATION
+        ]
+        cursor: $cursor
+        limit: $limit
+      ) {
+        results {
+          __typename
+          ... on FailedToMaterializeEvent {
+            runId
+            stepKey
+            partition
+            timestamp
+            materializationFailureType
+            materializationFailureReason
+            metadataEntries {
+              __typename
+              label
+              ... on TextMetadataEntry {
+                text
+              }
+            }
+          }
+          ... on MaterializationEvent {
+            runId
+            stepKey
+            partition
+            timestamp
+            metadataEntries {
+              __typename
+              label
+              ... on TextMetadataEntry {
+                text
+              }
+            }
+          }
+          ... on ObservationEvent {
+            runId
+            stepKey
+            partition
+            timestamp
+            metadataEntries {
+              __typename
+              label
+              ... on TextMetadataEntry {
+                text
+              }
+            }
+          }
+        }
+        cursor
+      }
+    }
+    ... on AssetNotFoundError {
+      message
+    }
+  }
+}

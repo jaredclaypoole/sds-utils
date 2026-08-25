@@ -1,0 +1,67 @@
+query PartitionRunEvents($runIds: [String!], $eventLimit: Int!) {
+  runsOrError(filter: {runIds: $runIds}) {
+    __typename
+    ... on Runs {
+      results {
+        runId
+        eventConnection(limit: $eventLimit) {
+          events {
+            __typename
+            ... on MaterializationEvent {
+              runId
+              stepKey
+              timestamp
+              partition
+              assetKey { path }
+            }
+            ... on FailedToMaterializeEvent {
+              runId
+              stepKey
+              timestamp
+              partition
+              assetKey { path }
+              materializationFailureType
+              materializationFailureReason
+              metadataEntries {
+                __typename
+                label
+                ... on TextMetadataEntry { text }
+              }
+            }
+            ... on ObservationEvent {
+              runId
+              stepKey
+              timestamp
+              partition
+              assetKey { path }
+              metadataEntries {
+                __typename
+                label
+                ... on TextMetadataEntry { text }
+              }
+            }
+            ... on AssetMaterializationPlannedEvent {
+              timestamp
+              assetKey { path }
+            }
+            ... on RunFailureEvent {
+              runId
+              stepKey
+              timestamp
+            }
+            ... on LogMessageEvent {
+              runId
+              stepKey
+              timestamp
+              message
+            }
+          }
+          cursor
+          hasMore
+        }
+      }
+    }
+    ... on InvalidPipelineRunsFilterError { message }
+    ... on PythonError { message stack }
+  }
+}
