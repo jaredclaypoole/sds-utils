@@ -1,0 +1,42 @@
+from enum import Enum
+
+
+class AssetMaterializationFailureReason(str, Enum):
+    FAILED_TO_MATERIALIZE = "FAILED_TO_MATERIALIZE"
+    UPSTREAM_FAILED_TO_MATERIALIZE = "UPSTREAM_FAILED_TO_MATERIALIZE"
+    RUN_TERMINATED = "RUN_TERMINATED"
+    UNKNOWN = "UNKNOWN"
+
+
+class AssetMaterializationFailureType(str, Enum):
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"
+
+
+class PartitionRangeStatus(str, Enum):
+    MATERIALIZING = "MATERIALIZING"
+    MATERIALIZED = "MATERIALIZED"
+    FAILED = "FAILED"
+
+
+class RunStatus(str, Enum):
+    QUEUED = "QUEUED"
+    NOT_STARTED = "NOT_STARTED"
+    MANAGED = "MANAGED"
+    STARTING = "STARTING"
+    STARTED = "STARTED"
+    SUCCESS = "SUCCESS"
+    FAILURE = "FAILURE"
+    CANCELING = "CANCELING"
+    CANCELED = "CANCELED"
+
+
+class BulkActionStatus(str, Enum):
+    REQUESTED = "REQUESTED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELED = "CANCELED"
+    CANCELING = "CANCELING"
+    COMPLETED_SUCCESS = "COMPLETED_SUCCESS"
+    COMPLETED_FAILED = "COMPLETED_FAILED"
+    FAILING = "FAILING"
