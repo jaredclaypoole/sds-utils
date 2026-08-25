@@ -48,7 +48,7 @@ repository = "https://github.com/IMAP-Science-Operations-Center/sds-utils"
 dashboard = ["nicegui>=3.16.0,<4.0.0", "ariadne-codegen>=0.18.0,<0.19.0", "sqlmodel>=0.0.39,<0.0.40"]
 dev = ["pre-commit>=3.3.3,<4", "ruff==0.15.2", "mypy==1.10.1"]
 doc = ["numpydoc>=1.5.0,<2", "pydata-sphinx-theme", "sphinx", "sphinxcontrib-openapi>=0.8.3,<0.9"]
-notebook = ["marimo>=0.24.0,<0.25.0", "pandas>=2,<3"]
+notebook = ["marimo>=0.24.0,<0.25.0", "moutils>=0.5.0,<0.6.0", "pandas>=2,<3"]
 test = ["pytest>=6.2.5", "pytest-cov>=4.0.0,<5", "pytest-xdist>=3.2,<4"]
 
 
