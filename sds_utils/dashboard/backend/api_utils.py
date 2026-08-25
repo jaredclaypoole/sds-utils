@@ -18,7 +18,7 @@ def dagster_ui_url() -> str:
 
 
 def client_headers() -> dict[str, str] | None:
-    """Build the authentication header used by Dagster Cloud, when configured."""
-    if token := os.getenv("DAGSTER_API_TOKEN"):
-        return {"Dagster-Cloud-Api-Token": token}
+    """Build the authentication header used by Dagster, when configured."""
+    if api_key := os.getenv("DAGSTER_API_KEY"):
+        return {"x-dagster-api-key": api_key}
     return None
