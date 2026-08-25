@@ -12,15 +12,15 @@ authors = [{name = "IMAP SDC Developers", email = "imap-sdc@lists.lasp.colorado.
 readme = "README.md"
 license = "MIT"
 keywords = ["IMAP", "SDC", "SOC", "Science Operations"]
-requires-python = ">=3.10,<4"
+requires-python = ">=3.12,<4"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development",
     "Topic :: Scientific/Engineering",
     "Operating System :: Microsoft :: Windows",
