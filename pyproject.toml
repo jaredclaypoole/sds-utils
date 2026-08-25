@@ -88,6 +88,17 @@ extend-exclude = [
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
+[tool.ruff.lint.per-file-ignores]
+# Dashboard views contain many framework lifecycle methods whose names already
+# describe their role; requiring one-line docstrings on each adds little value.
+"sds_utils/dashboard/frontend/*.py" = ["D100", "D101", "D102", "D103"]
+# Generated GraphQL model names and embedded Vue templates cannot be usefully
+# wrapped to the normal Python line length.
+"sds_utils/dashboard/frontend/data.py" = ["E501", "PLR0912", "PLR0913", "PLR0915"]
+"sds_utils/dashboard/frontend/elems.py" = ["E501", "PLR0913", "RUF012"]
+"sds_utils/dashboard/frontend/backfills.py" = ["E501", "RUF012"]
+"sds_utils/dashboard/partition_classifier.py" = ["E501", "PLR0913"]
+
 [tool.codespell]
 ignore-words-list = "livetime,nd"
 
