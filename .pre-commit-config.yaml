@@ -30,4 +30,8 @@ repos:
     hooks:
       - id: mypy
         exclude: .*(tests|docs|test_).*
-        additional_dependencies: [numpy>=2]
+        additional_dependencies:
+          - numpy>=2
+          - nicegui>=3.16.0,<4.0.0
+          - pydantic>=2,<3
+          - sqlmodel>=0.0.39,<0.0.40
