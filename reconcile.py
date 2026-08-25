@@ -2,7 +2,7 @@ import time
 
 from functools import cache
 
-from query_app.frontend.data import DagsterAssetsDataSource
+from sds_utils.dashboard.backend.data import DagsterAssetsDataSource
 from db import AssetPartitionHistory, create_db_and_tables, engine
 from sqlmodel import select, Session
 

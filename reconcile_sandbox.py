@@ -18,7 +18,7 @@ with app.setup:
     # from tqdm.contrib.concurrent import thread_map
     from moutils.concurrent import thread_map
 
-    from scrubber import DAILY_INSTRUMENTS
+    from sds_utils.scrubber import DAILY_INSTRUMENTS
     # from reconcile import latest_attempt_failed_after_previous_success_cached
     from reconcile import latest_attempt_failed_after_previous_success_db
 
