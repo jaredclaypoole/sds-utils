@@ -40,7 +40,7 @@ def extract_day(partition: str) -> datetime.date:
     split = partition.split("_")
     if len(split) < 4:
         raise ValueError("TODO")
-    day = datetime.date.strptime(split[-3][:10], "%Y-%m-%d")
+    day = datetime.datetime.strptime(split[-3][:10], "%Y-%m-%d").date()
     return day
 
 
@@ -71,7 +71,7 @@ def extract_repoint_number(partition: str) -> int | NAType:
 def post_process_scrubber(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     if 'Date' in df.columns:
-        df['Date'] = df.Date.map(lambda s: datetime.date.strptime(str(s), '%Y%m%d'))
+        df['Date'] = df.Date.map(lambda s: datetime.datetime.strptime(str(s), '%Y%m%d').date())
     df['Descriptor'] = df.Descriptor.str.replace('-', '')
     return df
 
