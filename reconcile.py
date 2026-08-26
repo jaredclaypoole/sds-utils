@@ -11,12 +11,12 @@ _db_init_done = False
 
 
 @cache
-def latest_attempt_failed_after_previous_success_cached(asset: str, partition: str) -> bool:
-    time.sleep(0.1)
+def latest_attempt_failed_after_previous_success_cached(
+    asset: str, partition: str
+) -> bool:
     dg_source = DagsterAssetsDataSource()
-    return dg_source.latest_attempt_failed_after_previous_success(
-        [asset],
-        partition
+    return dg_source.latest_attempt_failed_after_previous_success_targeted(
+        [asset], partition
     )
 
 
@@ -29,8 +29,8 @@ def latest_attempt_failed_after_previous_success_db(asset: str, partition: str) 
     with Session(engine) as session:
         elems = session.exec(
             select(AssetPartitionHistory).where(
-                (AssetPartitionHistory.asset == asset) &
-                (AssetPartitionHistory.partition == partition)
+                (AssetPartitionHistory.asset == asset)
+                & (AssetPartitionHistory.partition == partition)
             )
         ).all()
         if elems:
@@ -38,9 +38,10 @@ def latest_attempt_failed_after_previous_success_db(asset: str, partition: str) 
             return elems[0].stale_success
         else:
             dg_source = DagsterAssetsDataSource()
-            is_stale_success = dg_source.latest_attempt_failed_after_previous_success(
-                [asset],
-                partition
+            is_stale_success = (
+                dg_source.latest_attempt_failed_after_previous_success_targeted(
+                    [asset], partition
+                )
             )
             elem = AssetPartitionHistory(
                 asset=asset,

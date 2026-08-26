@@ -202,6 +202,34 @@ class DagsterAssetsDataSource:
                     return False
                 cursor = next_cursor
 
+    def latest_attempt_failed_after_previous_success_targeted(
+        self,
+        asset_path: Sequence[str],
+        partition: str,
+    ) -> bool:
+        """Use pair-oriented fields to detect a failure after an earlier success."""
+        key = AssetKeyInput(path=list(asset_path))
+        with self._client() as client:
+            nodes = client.asset_partition_pair_states(
+                asset_keys=[key],
+                partitions=[partition],
+                partition=partition,
+            ).asset_nodes
+        if not nodes:
+            raise ValueError(f"Unknown Dagster asset: {' / '.join(asset_path)}")
+
+        node = nodes[0]
+        materialization = next(iter(node.latest_materialization_by_partition), None)
+        latest_run = node.latest_run_for_partition
+        return bool(
+            materialization is not None
+            and latest_run is not None
+            and latest_run.status is RunStatus.FAILURE
+            and latest_run.update_time is not None
+            and latest_run.update_time
+            >= _dagster_timestamp_sort_key(materialization.timestamp)
+        )
+
     def load_recent_status_rows(
         self,
         *,

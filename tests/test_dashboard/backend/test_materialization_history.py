@@ -7,6 +7,7 @@ from sds_utils.dashboard.backend.data import DagsterAssetsDataSource
 from sds_utils.dashboard.dagster_graphql_client.asset_partition_state import (
     AssetPartitionState,
 )
+from sds_utils.dashboard.dagster_graphql_client.enums import RunStatus
 
 
 def _event(event_type: str) -> SimpleNamespace:
@@ -38,8 +39,8 @@ def _configure_partitions(
                 "assetPartitionStatuses": {
                     "__typename": "DefaultPartitionStatuses",
                     "materializedPartitions": [
-                    partition for partition in partitions if partition not in failed
-                ],
+                        partition for partition in partitions if partition not in failed
+                    ],
                     "materializingPartitions": [],
                     "failedPartitions": list(failed),
                     "unmaterializedPartitions": [],
@@ -50,6 +51,52 @@ def _configure_partitions(
 
 
 class MaterializationHistoryTests(TestCase):
+    def test_targeted_failure_after_previous_success(self) -> None:
+        client = MagicMock()
+        client.asset_partition_pair_states.return_value = SimpleNamespace(
+            asset_nodes=[
+                SimpleNamespace(
+                    latest_materialization_by_partition=[
+                        SimpleNamespace(timestamp="2000")
+                    ],
+                    latest_run_for_partition=SimpleNamespace(
+                        status=RunStatus.FAILURE,
+                        update_time=3.0,
+                    ),
+                )
+            ]
+        )
+        source = DagsterAssetsDataSource()
+        source._client = lambda: nullcontext(client)  # type: ignore[method-assign]
+
+        result = source.latest_attempt_failed_after_previous_success_targeted(
+            ("mag_l1d_example",), "partition"
+        )
+
+        self.assertTrue(result)
+
+    def test_targeted_failure_without_previous_success_does_not_match(self) -> None:
+        client = MagicMock()
+        client.asset_partition_pair_states.return_value = SimpleNamespace(
+            asset_nodes=[
+                SimpleNamespace(
+                    latest_materialization_by_partition=[],
+                    latest_run_for_partition=SimpleNamespace(
+                        status=RunStatus.FAILURE,
+                        update_time=3.0,
+                    ),
+                )
+            ]
+        )
+        source = DagsterAssetsDataSource()
+        source._client = lambda: nullcontext(client)  # type: ignore[method-assign]
+
+        result = source.latest_attempt_failed_after_previous_success_targeted(
+            ("mag_l1d_example",), "partition"
+        )
+
+        self.assertFalse(result)
+
     def test_latest_failure_with_success_on_an_older_page(self) -> None:
         client = MagicMock()
         _configure_partitions(client, "partition", failed=("partition",))
