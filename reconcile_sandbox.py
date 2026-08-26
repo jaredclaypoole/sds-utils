@@ -375,34 +375,36 @@ def _():
 
 @app.cell
 def _(ddf_4):
-    # _df = ddf_4
-    # _df = _df[:200]
-    # _assets = list(_df.Asset)
-    # _partitions = list(_df.Partition)
-    # thread_map(
-    #     lambda tup: latest_attempt_failed_after_previous_success_db(*tup),
-    #     list(zip(_assets, _partitions, strict=True)),
-    #     max_workers=2,
-    # )
+    _df = ddf_4
+    _assets = list(_df.Asset)
+    _partitions = list(_df.Partition)
+    _do_thread_map = False
+    if _do_thread_map:
+        thread_map(
+            lambda tup: latest_attempt_failed_after_previous_success_db(*tup),
+            list(zip(_assets, _partitions, strict=True)),
+            max_workers=2,
+        )
     return
 
 
 @app.cell
-def _():
-    # _df = ddf_4
-    # # _df = ddf_days_not_in_scrubber_filtered
-    # _df = _df[:20]
-    # _assets = list(_df.Asset)
-    # _partitions = list(_df.Partition)
-    # _the_iter = list(zip(_assets, _partitions, strict=True))
+def _(ddf_4):
+    _df = ddf_4
+    _df = _df.iloc[-18:]
+    _assets = list(_df.Asset)
+    _partitions = list(_df.Partition)
+    _the_iter = list(zip(_assets, _partitions, strict=True))
 
-    # print(len(_the_iter))
+    print(len(_the_iter))
 
-    # # for _asset, _partition in mo.status.progress_bar(_the_iter):
-    # for _asset, _partition in _the_iter:
-    #     break
-    # # _dg_source.latest_attempt_failed_after_previous_success(_asset, _partition)
-    # latest_attempt_failed_after_previous_success_db(_asset, _partition)
+    # for _asset, _partition in mo.status.progress_bar(_the_iter):
+    for _asset, _partition in _the_iter:
+        break
+    print(_asset, _partition)
+    _do_fcn_call = False
+    if _do_fcn_call:
+        latest_attempt_failed_after_previous_success_db(_asset, _partition)
     return
 
 
