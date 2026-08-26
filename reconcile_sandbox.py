@@ -327,15 +327,15 @@ def _(ddf_repoints_not_in_scrubber, partition_ranges):
 
     _df = _df.reset_index()
 
-    _levels_to_exclude = set("l1a l1b".split())
-    _mask = (
-        (_df.Instrument == "ultra")
-        & 
-        _df.Level.map(lambda s: s in _levels_to_exclude)
-        & 
-        _df.repoint_ranges.map(lambda rr: rr == [(295, 300)])
-    )
-    _df = _df[~_mask]
+    # _levels_to_exclude = set("l1a l1b".split())
+    # _mask = (
+    #     (_df.Instrument == "ultra")
+    #     &
+    #     _df.Level.map(lambda s: s in _levels_to_exclude)
+    #     &
+    #     _df.repoint_ranges.map(lambda rr: rr == [(295, 300)])
+    # )
+    # _df = _df[~_mask]
 
     _df = _df.sort_values(by="Instrument Level Descriptor".split())
 
@@ -344,8 +344,10 @@ def _(ddf_repoints_not_in_scrubber, partition_ranges):
     # with pd.option_context('display.max_colwidth', None):
     #     display(_df)
 
+    ddf4_grouped = _df
+
     _df
-    return (ddf_4,)
+    return ddf4_grouped, ddf_4
 
 
 @app.cell(hide_code=True)
@@ -360,16 +362,22 @@ def _():
     return
 
 
-@app.cell(hide_code=True)
-def _():
-    mo.md(r"""
- 
-    """)
-    return
-
-
 @app.cell
-def _():
+def _(ddf4_grouped, ddf_4):
+    _dfg = ddf4_grouped
+    _df = ddf_4.copy()
+
+    index_cols = "Instrument Level Descriptor".split()
+
+    _dfg = _dfg.set_index(index_cols)
+    _df = _df.set_index(index_cols)
+
+    _dfg
+
+    _dfg.repoint_ranges
+    _df.loc[_dfg.index, "repoint_ranges"] = _dfg.repoint_ranges
+    _df
+
     return
 
 
@@ -383,7 +391,7 @@ def _(ddf_4):
         thread_map(
             lambda tup: latest_attempt_failed_after_previous_success_db(*tup),
             list(zip(_assets, _partitions, strict=True)),
-            max_workers=2,
+            max_workers=10,
         )
     return
 
