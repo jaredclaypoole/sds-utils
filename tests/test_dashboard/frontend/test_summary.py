@@ -60,3 +60,73 @@ class SummaryTests(TestCase):
             {row["missing_file"]: row["skipped"] for row in result},
             {"SPICE": 1, "ultra_l1a": 1},
         )
+
+    def test_summary_can_group_by_single_days(self) -> None:
+        rows = [
+            {
+                "asset": "mag_l1d_first",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "x_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            },
+            {
+                "asset": "mag_l1d_first",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "x_2026-01-02T00:00:00Z_to_2026-01-03T00:00:00Z",
+            },
+        ]
+
+        result = summarize_status_rows(rows, {"instrument"}, "day")  # type: ignore[arg-type]
+
+        self.assertEqual(
+            [(row["first_date"], row["last_date"]) for row in result],
+            [("2026-01-01", "2026-01-01"), ("2026-01-02", "2026-01-02")],
+        )
+
+    def test_summary_can_group_by_weeks(self) -> None:
+        rows = [
+            {
+                "asset": "mag_l1d_first",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "x_2026-01-04T00:00:00Z_to_2026-01-05T00:00:00Z",
+            },
+            {
+                "asset": "mag_l1d_first",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "x_2026-01-05T00:00:00Z_to_2026-01-06T00:00:00Z",
+            },
+        ]
+
+        result = summarize_status_rows(rows, {"instrument"}, "week")  # type: ignore[arg-type]
+
+        self.assertEqual(
+            [(row["first_date"], row["last_date"]) for row in result],
+            [("2025-12-29", "2026-01-04"), ("2026-01-05", "2026-01-11")],
+        )
+
+    def test_summary_can_group_by_multi_day_periods(self) -> None:
+        rows = [
+            {
+                "asset": "mag_l1d_first",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "x_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            },
+            {
+                "asset": "mag_l1d_first",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "x_2026-01-02T00:00:00Z_to_2026-01-03T00:00:00Z",
+            },
+        ]
+
+        result = summarize_status_rows(rows, {"instrument"}, "days", 3)  # type: ignore[arg-type]
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(
+            (result[0]["first_date"], result[0]["last_date"]),
+            ("2026-01-01", "2026-01-03"),
+        )

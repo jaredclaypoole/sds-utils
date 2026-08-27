@@ -43,12 +43,17 @@ from .models import (
     SortColumn,
     StartMode,
     StatusName,
+    SummaryDateAggregation,
     SummaryGroupDimension,
     SummarySortColumn,
     ViewMode,
 )
 from .settings_store import AppSettingsStore
-from .summary import SUMMARY_DIMENSIONS, summarize_status_rows
+from .summary import (
+    MIN_AGGREGATION_DAYS,
+    SUMMARY_DIMENSIONS,
+    summarize_status_rows,
+)
 
 logger = logging.getLogger("uvicorn.error.sds_utils.dashboard.frontend.ui")
 
@@ -919,12 +924,42 @@ class AssetsStatusSummaryTable(UIElem):
         self.sort_column = "instrument"
         self.sort_descending = False
         self.sorting_rules: list[SortRule] = []
+        self.date_aggregation: SummaryDateAggregation = "all"
+        self.aggregation_days = MIN_AGGREGATION_DAYS
         self.columns = [
             {**column, "sortable": False, "filter_value": "", "sort_direction": ""}
             for column in self.COLUMNS
         ]
 
     def render(self) -> None:
+        with ui.row().classes("w-full items-end gap-3") as self.aggregation_controls:
+            self.date_aggregation_select = (
+                ui.select(
+                    options={
+                        "all": "All dates",
+                        "day": "Single days",
+                        "week": "Weeks (Mon-Sun)",
+                        "days": "Multiple days",
+                    },
+                    value=self.date_aggregation,
+                    label="Date aggregation",
+                    on_change=self._on_date_aggregation_change,
+                )
+                .props("outlined")
+                .classes("w-56")
+            )
+            self.aggregation_days_input = (
+                ui.number(
+                    label="Days per period",
+                    value=self.aggregation_days,
+                    min=MIN_AGGREGATION_DAYS,
+                    step=1,
+                    on_change=self._on_aggregation_days_change,
+                )
+                .props("outlined")
+                .classes("w-40")
+            )
+            self.aggregation_days_input.set_visibility(False)
         self.table = ui.table(
             columns=self.columns,
             rows=[],
@@ -997,6 +1032,11 @@ class AssetsStatusSummaryTable(UIElem):
 
     def restore_settings(self, settings: AppSettingsState) -> None:
         self.enabled_dimensions = set(settings.summary_group_dimensions)
+        self.date_aggregation = settings.summary_date_aggregation
+        self.aggregation_days = settings.summary_aggregation_days
+        self.date_aggregation_select.value = self.date_aggregation
+        self.aggregation_days_input.value = self.aggregation_days
+        self.aggregation_days_input.set_visibility(self.date_aggregation == "days")
         self.date_filters = {
             column: (
                 item.mode,
@@ -1015,7 +1055,12 @@ class AssetsStatusSummaryTable(UIElem):
         self._apply()
 
     def _apply(self) -> None:
-        rows = summarize_status_rows(self.source_rows, self.enabled_dimensions)
+        rows = summarize_status_rows(
+            self.source_rows,
+            self.enabled_dimensions,
+            self.date_aggregation,
+            self.aggregation_days,
+        )
         self.table.rows = _sorted_rows(
             [row for row in rows if self._matches_date_filters(row)],
             self.sorting_rules,
@@ -1107,6 +1152,27 @@ class AssetsStatusSummaryTable(UIElem):
         self._refresh_column_metadata()
         self._apply()
         self.on_settings_change()
+
+    def _on_date_aggregation_change(self, event: object) -> None:
+        value = str(getattr(event, "value", ""))
+        if value not in {"all", "day", "week", "days"}:
+            return
+        self.date_aggregation = cast(SummaryDateAggregation, value)
+        self.aggregation_days_input.set_visibility(value == "days")
+        self._apply()
+        self.on_settings_change()
+
+    def _on_aggregation_days_change(self, event: object) -> None:
+        try:
+            value = int(getattr(event, "value", self.aggregation_days))
+        except (TypeError, ValueError):
+            return
+        if value < MIN_AGGREGATION_DAYS:
+            return
+        self.aggregation_days = value
+        if self.date_aggregation == "days":
+            self._apply()
+            self.on_settings_change()
 
     def _set_sort(self, column: str, descending: bool) -> None:
         self.sort_column = column
@@ -2038,6 +2104,9 @@ class AssetsStatusView(UIElem):
     def _apply_view_visibility(self) -> None:
         self.table.table.set_visibility(self.view_mode == "all_rows")
         self.summary_table.table.set_visibility(self.view_mode == "summary")
+        self.summary_table.aggregation_controls.set_visibility(
+            self.view_mode == "summary"
+        )
 
     async def _on_start_change(self, event: object) -> None:
         value = str(getattr(event, "value", ""))
@@ -2162,6 +2231,8 @@ class AssetsStatusView(UIElem):
                     if dimension in self.summary_table.enabled_dimensions
                 ],
             ),
+            summary_date_aggregation=self.summary_table.date_aggregation,
+            summary_aggregation_days=self.summary_table.aggregation_days,
             visible_optional_columns=cast(
                 list[OptionalColumn],
                 [

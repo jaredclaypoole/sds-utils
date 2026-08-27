@@ -124,6 +124,7 @@ def _default_visible_statuses() -> list[StatusName]:
 SummaryGroupDimension = Literal[
     "instrument", "data_level", "descriptor", "missing_file"
 ]
+SummaryDateAggregation = Literal["all", "day", "week", "days"]
 
 
 def _default_summary_group_dimensions() -> list[SummaryGroupDimension]:
@@ -163,6 +164,8 @@ class AppSettingsState(BaseModel):
     summary_group_dimensions: list[SummaryGroupDimension] = PydanticField(
         default_factory=_default_summary_group_dimensions
     )
+    summary_date_aggregation: SummaryDateAggregation = "all"
+    summary_aggregation_days: int = PydanticField(default=2, ge=2)
     visible_optional_columns: list[OptionalColumn] = PydanticField(default_factory=list)
     export_main_csv: bool = True
     export_main_text: bool = False

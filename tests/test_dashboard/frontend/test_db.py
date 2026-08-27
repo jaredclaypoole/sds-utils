@@ -140,6 +140,8 @@ class AppSettingsStoreTests(TestCase):
                 ColumnSortSettings(column="instrument"),
             ],
             summary_group_dimensions=["instrument", "data_level"],
+            summary_date_aggregation="days",
+            summary_aggregation_days=3,
             visible_optional_columns=["tags"],
             export_main_csv=False,
             export_main_text=True,
