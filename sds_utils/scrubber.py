@@ -12,7 +12,6 @@ import imap_data_access
 import numpy
 import tqdm
 
-
 DAILY_INSTRUMENTS = ("codice", "hit", "mag", "swapi", "swe")
 
 
@@ -84,6 +83,11 @@ def missing_repoints(fileinfo: list[dict[str, typing.Any]]) -> list[int]:
     ]
 
 
+def parse_date(date_str: str) -> datetime.date:
+    """Convert YYYYMMDD string to a date object."""
+    return datetime.datetime.strptime(date_str, "%Y%m%d").date()
+
+
 def missing_days(fileinfo: list[dict[str, typing.Any]]) -> list[str]:
     """Find missing dates in a set of files."""
     dates = [datetime.datetime.strptime(f["start_date"], "%Y%m%d") for f in fileinfo]
@@ -152,6 +156,43 @@ def scrubber() -> None:
         for logical_source, files in break_by_logical_source(inst_files).items()
         if logical_source[1][:2] != "l0"
     }
+    latest_start_end = {
+        logical_source: (
+            min(files, key=lambda file: parse_date(file["start_date"])),
+            max(files, key=lambda file: parse_date(file["start_date"])),
+        )
+        for logical_source, files in latest.items()
+    }
+    with open("all_products.csv", "w") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(
+            [
+                "Instrument",
+                "Level",
+                "Descriptor",
+                "MinStartDate",
+                "MaxStartDate",
+                "MinRepoint",
+                "MaxRepoint",
+            ]
+        )
+
+        def _make_row(
+            logical_source: tuple[str, str, str],
+            min_file: dict[str, typing.Any],
+            max_file: dict[str, typing.Any],
+        ) -> list[str]:
+            return [
+                *logical_source,
+                min_file["start_date"],
+                max_file["start_date"],
+                min_file.get("repointing"),
+                max_file.get("repointing"),
+            ]
+
+        for logical_source, (min_file, max_file) in sorted(latest_start_end.items()):
+            writer.writerow(_make_row(logical_source, min_file, max_file))
+
     latest_repoint_files = {
         k: v for k, v in latest.items() if v and v[0].get("repointing") is not None
     }
@@ -163,6 +204,7 @@ def scrubber() -> None:
         for k in sorted(missing):
             for repoint in missing[k]:
                 writer.writerow([*list(k), repoint])
+
     latest_daily_files = {k: v for k, v in latest.items() if k[0] in DAILY_INSTRUMENTS}
     missing = {k: missing_days(v) for k, v in latest_daily_files.items()}  # type: ignore[misc]
     # missing = combine_missing(missing)
