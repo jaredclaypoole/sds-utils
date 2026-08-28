@@ -98,7 +98,7 @@ StartMode = Literal[
     "custom_date",
 ]
 EndMode = Literal["now", "custom"]
-ViewMode = Literal["all_rows", "summary"]
+ViewMode = Literal["all_rows", "summary", "dependency_graph"]
 OptionalColumn = Literal["tags", "notes"]
 SummarySortColumn = Literal[
     "",
@@ -125,6 +125,19 @@ SummaryGroupDimension = Literal[
     "instrument", "data_level", "descriptor", "missing_file"
 ]
 SummaryDateAggregation = Literal["all", "day", "week", "days"]
+DependencyGraphInstrument = Literal[
+    "codice",
+    "glows",
+    "hi",
+    "hit",
+    "idex",
+    "lo",
+    "mag",
+    "spacecraft",
+    "swapi",
+    "swe",
+    "ultra",
+]
 
 
 def _default_summary_group_dimensions() -> list[SummaryGroupDimension]:
@@ -155,6 +168,7 @@ class AppSettingsState(BaseModel):
     ] = "partition_only"
     show_unpartitioned_assets: bool = False
     view_mode: ViewMode = "all_rows"
+    dependency_graph_instrument: DependencyGraphInstrument = "mag"
     summary_column_filters: dict[str, ColumnFilterSettings] = PydanticField(
         default_factory=dict
     )

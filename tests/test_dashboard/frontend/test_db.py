@@ -129,7 +129,8 @@ class AppSettingsStoreTests(TestCase):
             custom_days_before=4.5,
             timestamp_filtering="partition_only",
             show_unpartitioned_assets=True,
-            view_mode="summary",
+            view_mode="dependency_graph",
+            dependency_graph_instrument="spacecraft",
             summary_column_filters={
                 "instrument": ColumnFilterSettings(mode="pattern", value="^mag$")
             },

@@ -20,6 +20,12 @@ from nicegui.events import GenericEventArguments
 from pydantic import ValidationError
 
 from ..backend.data import AssetOption, AssetStatusRow, DagsterAssetsDataSource
+from ..backend.dependency_graph import (
+    DEPENDENCY_GRAPH_INSTRUMENTS,
+    DependencyGraph,
+    dependency_graph_mermaid,
+    load_dependency_graph,
+)
 from ..backend.partition_time import (
     TimestampFiltering,
     include_partition,
@@ -36,6 +42,7 @@ from .models import (
     AppSettingsState,
     ColumnFilterSettings,
     ColumnSortSettings,
+    DependencyGraphInstrument,
     EndMode,
     FilterMode,
     InstrumentName,
@@ -1640,6 +1647,7 @@ class AssetToolbar(UIElem):
         on_timestamp_filtering_change: Callable[..., object],
         on_unpartitioned_asset_change: Callable[..., object],
         on_view_change: Callable[..., object],
+        on_dependency_graph_instrument_change: Callable[..., object],
         on_settings: Callable[..., object],
         on_export: Callable[..., object],
         on_refresh: Callable[..., object],
@@ -1652,6 +1660,9 @@ class AssetToolbar(UIElem):
         self.on_timestamp_filtering_change = on_timestamp_filtering_change
         self.on_unpartitioned_asset_change = on_unpartitioned_asset_change
         self.on_view_change = on_view_change
+        self.on_dependency_graph_instrument_change = (
+            on_dependency_graph_instrument_change
+        )
         self.on_settings = on_settings
         self.on_export = on_export
         self.on_refresh = on_refresh
@@ -1664,6 +1675,7 @@ class AssetToolbar(UIElem):
         self.unpartitioned_asset_select: Select
         self.refresh_button: Button
         self.view_select: Select
+        self.dependency_graph_instrument_select: Select
         self.settings_button: Button
         self.export_button: Button
         self.cancel_load_button: Button
@@ -1747,13 +1759,30 @@ class AssetToolbar(UIElem):
             with ui.row().classes("w-full items-end gap-3"):
                 self.view_select = (
                     ui.select(
-                        options={"all_rows": "All rows", "summary": "Summary"},
+                        options={
+                            "all_rows": "All rows",
+                            "summary": "Summary",
+                            "dependency_graph": "Dependency graph",
+                        },
                         value=self.settings.view_mode,
                         label="View",
                         on_change=self.on_view_change,
                     )
                     .props("outlined")
                     .classes("w-40")
+                )
+                self.dependency_graph_instrument_select = (
+                    ui.select(
+                        list(DEPENDENCY_GRAPH_INSTRUMENTS),
+                        value=self.settings.dependency_graph_instrument,
+                        label="Instrument",
+                        on_change=self.on_dependency_graph_instrument_change,
+                    )
+                    .props("outlined")
+                    .classes("w-40")
+                )
+                self.dependency_graph_instrument_select.set_visibility(
+                    self.settings.view_mode == "dependency_graph"
                 )
                 self.unpartitioned_asset_select = (
                     ui.select(
@@ -1780,6 +1809,7 @@ class AssetToolbar(UIElem):
     def set_loading(self, loading: bool) -> None:
         self.instrument_select.set_enabled(not loading)
         self.view_select.set_enabled(not loading)
+        self.dependency_graph_instrument_select.set_enabled(not loading)
         self.start_select.set_enabled(not loading)
         self.end_select.set_enabled(not loading)
         self.timestamp_filtering_select.set_enabled(not loading)
@@ -1824,16 +1854,47 @@ class AssetToolbar(UIElem):
         self.end_select.value = value
 
 
+class DependencyGraphView(UIElem):
+    def render(self) -> None:
+        with ui.column().classes("w-full gap-3") as self.container:
+            self.status_label = ui.label().classes("text-sm text-slate-500")
+            with ui.scroll_area().classes("w-full h-[70vh] border rounded-lg bg-white"):
+                self.diagram = ui.mermaid(
+                    'flowchart LR\n    empty["Select an instrument"]',
+                    config={
+                        "flowchart": {"useMaxWidth": False, "htmlLabels": True},
+                        "securityLevel": "strict",
+                    },
+                ).classes("min-w-max p-6")
+
+    def set_loading(self, instrument: str) -> None:
+        self.status_label.set_text(f"Loading {instrument} dependencies...")
+
+    def set_graph(self, graph: DependencyGraph, instrument: str) -> None:
+        self.status_label.set_text(
+            f"{len(graph.nodes)} nodes, {len(graph.edges)} dependencies"
+        )
+        self.diagram.set_content(dependency_graph_mermaid(graph, instrument))
+
+    def set_error(self, message: str) -> None:
+        self.status_label.set_text(message)
+        self.diagram.set_content("")
+
+
 class AssetsStatusView(UIElem):
     def __init__(
         self,
         data_source: DagsterAssetsDataSource | None = None,
         metadata_store: AttemptMetadataStore | None = None,
         settings_store: AppSettingsStore | None = None,
+        dependency_graph_loader: Callable[[str], DependencyGraph] | None = None,
     ) -> None:
         self.data_source = data_source or DagsterAssetsDataSource()
         self.metadata_store = metadata_store or AttemptMetadataStore()
         self.settings_store = settings_store or AppSettingsStore()
+        self.dependency_graph_loader: Callable[[str], DependencyGraph] = (
+            dependency_graph_loader or load_dependency_graph
+        )
         self.settings = self.settings_store.load()
         self.all_assets: list[AssetOption] = []
         self.assets: list[AssetOption] = []
@@ -1845,6 +1906,11 @@ class AssetsStatusView(UIElem):
         self.custom_end = self.settings.custom_end
         self.timestamp_filtering = TimestampFiltering(self.settings.timestamp_filtering)
         self.view_mode: str = self.settings.view_mode
+        self.dependency_graph_instrument: str = (
+            self.settings.dependency_graph_instrument
+        )
+        self._dependency_graph_cache: dict[str, DependencyGraph] = {}
+        self._dependency_graph_generation = 0
         self._load_task: asyncio.Task[Any] | None = None
         self._load_generation = 0
         combined_columns = cast(
@@ -1890,6 +1956,9 @@ class AssetsStatusView(UIElem):
                 on_timestamp_filtering_change=self._on_timestamp_filtering_change,
                 on_unpartitioned_asset_change=self._on_unpartitioned_asset_change,
                 on_view_change=self._on_view_change,
+                on_dependency_graph_instrument_change=(
+                    self._on_dependency_graph_instrument_change
+                ),
                 on_settings=self._open_settings,
                 on_export=self._open_export,
                 on_refresh=self._refresh,
@@ -1923,6 +1992,7 @@ class AssetsStatusView(UIElem):
             self.table.set_sorting(self.sorting_rules)
             self.summary_table.set_sorting(self.sorting_rules)
             self.summary_table.set_shared_filters(self.table.column_filters)
+            self.dependency_graph_view = DependencyGraphView().build()
             self._apply_view_visibility()
             self.start_dialog = DateTimePickerDialog(
                 title="Custom start date",
@@ -1953,6 +2023,8 @@ class AssetsStatusView(UIElem):
                 on_download=self._download_selected_exports,
             ).build()
         ui.timer(0, self._load_assets, once=True)
+        if self.view_mode == "dependency_graph":
+            ui.timer(0, self._load_dependency_graph, once=True)
 
     async def _load_assets(self) -> None:
         self._load_generation += 1
@@ -2093,13 +2165,51 @@ class AssetsStatusView(UIElem):
             media_type=media_type,
         )
 
-    def _on_view_change(self, event: object) -> None:
+    async def _on_view_change(self, event: object) -> None:
         value = str(getattr(event, "value", ""))
-        if value not in {"all_rows", "summary"}:
+        if value not in {"all_rows", "summary", "dependency_graph"}:
             return
         self.view_mode = value
         self._apply_view_visibility()
         self._schedule_settings_save()
+        if value == "dependency_graph":
+            await self._load_dependency_graph()
+
+    async def _on_dependency_graph_instrument_change(self, event: object) -> None:
+        value = str(getattr(event, "value", ""))
+        if value not in DEPENDENCY_GRAPH_INSTRUMENTS:
+            return
+        self.dependency_graph_instrument = value
+        self._schedule_settings_save()
+        await self._load_dependency_graph()
+
+    async def _load_dependency_graph(self) -> None:
+        instrument = self.dependency_graph_instrument
+        self._dependency_graph_generation += 1
+        generation = self._dependency_graph_generation
+        self.dependency_graph_view.set_loading(instrument)
+        self.toolbar.dependency_graph_instrument_select.set_enabled(False)
+        try:
+            graph = self._dependency_graph_cache.get(instrument)
+            if graph is None:
+                loaded_graph = await run.io_bound(
+                    self.dependency_graph_loader, instrument
+                )
+                if loaded_graph is None:
+                    raise RuntimeError("Dependency graph loader returned no result")
+                graph = loaded_graph
+                self._dependency_graph_cache[instrument] = graph
+            if generation == self._dependency_graph_generation:
+                self.dependency_graph_view.set_graph(graph, instrument)
+        except Exception:
+            logger.exception("Could not load dependency graph for %s", instrument)
+            if generation == self._dependency_graph_generation:
+                self.dependency_graph_view.set_error(
+                    f"Could not load the {instrument} dependency graph."
+                )
+        finally:
+            if generation == self._dependency_graph_generation:
+                self.toolbar.dependency_graph_instrument_select.set_enabled(True)
 
     def _apply_view_visibility(self) -> None:
         self.table.table.set_visibility(self.view_mode == "all_rows")
@@ -2107,6 +2217,9 @@ class AssetsStatusView(UIElem):
         self.summary_table.aggregation_controls.set_visibility(
             self.view_mode == "summary"
         )
+        show_graph = self.view_mode == "dependency_graph"
+        self.toolbar.dependency_graph_instrument_select.set_visibility(show_graph)
+        self.dependency_graph_view.container.set_visibility(show_graph)
 
     async def _on_start_change(self, event: object) -> None:
         value = str(getattr(event, "value", ""))
@@ -2207,6 +2320,9 @@ class AssetsStatusView(UIElem):
             timestamp_filtering=self.timestamp_filtering.value,
             show_unpartitioned_assets=self.table.show_unpartitioned_assets,
             view_mode=cast(ViewMode, self.view_mode),
+            dependency_graph_instrument=cast(
+                DependencyGraphInstrument, self.dependency_graph_instrument
+            ),
             summary_column_filters={
                 column: ColumnFilterSettings(
                     mode=cast(FilterMode, mode),
