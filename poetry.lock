@@ -5419,7 +5419,7 @@ multidict = ">=4.0"
 propcache = ">=0.2.1"
 
 [extras]
-dashboard = ["ariadne-codegen", "nicegui", "sqlmodel"]
+dashboard = ["ariadne-codegen", "nicegui", "pyyaml", "sqlmodel"]
 dev = ["mypy", "pre-commit", "ruff"]
 doc = ["numpydoc", "pydata-sphinx-theme", "sphinx", "sphinxcontrib-openapi"]
 notebook = ["marimo", "matplotlib", "moutils", "pandas"]
@@ -5428,4 +5428,4 @@ test = ["pytest", "pytest-cov", "pytest-xdist"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4"
-content-hash = "95b2c2a7876b20c61aee4b10c64cf47b2ee5abbb36379359164e0512d72dd3ac"
+content-hash = "b2753045fe2d902b6af7637ce1d3a896ad3581f73d4937fea9f8532ff5f5f43a"
