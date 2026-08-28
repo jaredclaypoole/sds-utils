@@ -1856,16 +1856,39 @@ class AssetToolbar(UIElem):
 
 class DependencyGraphView(UIElem):
     def render(self) -> None:
+        self.expanded = False
         with ui.column().classes("w-full gap-3") as self.container:
-            self.status_label = ui.label().classes("text-sm text-slate-500")
-            with ui.scroll_area().classes("w-full h-[70vh] border rounded-lg bg-white"):
+            with ui.row().classes("w-full items-center gap-2"):
+                self.status_label = ui.label().classes("text-sm text-slate-500 grow")
+                ui.button(icon="zoom_in", on_click=lambda: self._zoom("in")).props(
+                    "flat round dense"
+                ).tooltip("Zoom in")
+                ui.button(icon="zoom_out", on_click=lambda: self._zoom("out")).props(
+                    "flat round dense"
+                ).tooltip("Zoom out")
+                ui.button(icon="fit_screen", on_click=lambda: self._zoom("fit")).props(
+                    "flat round dense"
+                ).tooltip("Fit graph")
+                ui.button(
+                    icon="center_focus_strong",
+                    on_click=lambda: self._zoom("reset"),
+                ).props("flat round dense").tooltip("Reset zoom")
+                self.expand_button = ui.button(
+                    icon="fullscreen", on_click=self._toggle_expanded
+                ).props("flat round dense")
+                self.expand_button.tooltip("Expand graph")
+            with ui.element("div").classes(
+                "relative w-full h-[70vh] overflow-hidden border rounded-lg "
+                "bg-white cursor-grab touch-none select-none"
+            ) as self.viewport:
                 self.diagram = ui.mermaid(
                     'flowchart LR\n    empty["Select an instrument"]',
                     config={
                         "flowchart": {"useMaxWidth": False, "htmlLabels": True},
                         "securityLevel": "strict",
                     },
-                ).classes("min-w-max p-6")
+                ).classes("absolute left-0 top-0")
+        self._install_pan_and_zoom()
 
     def set_loading(self, instrument: str) -> None:
         self.status_label.set_text(f"Loading {instrument} dependencies...")
@@ -1879,6 +1902,131 @@ class DependencyGraphView(UIElem):
     def set_error(self, message: str) -> None:
         self.status_label.set_text(message)
         self.diagram.set_content("")
+
+    def _zoom(self, action: str) -> None:
+        ui.run_javascript(
+            "requestAnimationFrame(() => requestAnimationFrame(() => "
+            f"window.sdsDependencyGraphControl?.({self.viewport.id}, {action!r})))"
+        )
+
+    def _toggle_expanded(self) -> None:
+        self.expanded = not self.expanded
+        expanded_classes = (
+            "fixed inset-2 z-[3000] h-[calc(100vh-1rem)] p-3 bg-slate-50 shadow-2xl"
+        )
+        self.container.classes(
+            add=expanded_classes if self.expanded else None,
+            remove=None if self.expanded else expanded_classes,
+        )
+        self.viewport.classes(
+            add="flex-1 min-h-0 h-auto" if self.expanded else "h-[70vh]",
+            remove="h-[70vh]" if self.expanded else "flex-1 min-h-0 h-auto",
+        )
+        self.expand_button.props(
+            f"icon={'fullscreen_exit' if self.expanded else 'fullscreen'}"
+        )
+        self.expand_button.tooltip(
+            "Exit expanded view" if self.expanded else "Expand graph"
+        )
+        self._zoom("fit")
+
+    def _install_pan_and_zoom(self) -> None:
+        ui.run_javascript(
+            f"""
+            (() => {{
+              const viewportId = {self.viewport.id};
+              const viewport = document.getElementById(`c${{viewportId}}`);
+              const diagram = document.getElementById(`c{self.diagram.id}`);
+              if (!viewport || !diagram || viewport.dataset.panZoomReady) return;
+              viewport.dataset.panZoomReady = 'true';
+              const state = {{x: 20, y: 20, scale: 1, dragging: false}};
+              const clamp = value => Math.min(4, Math.max(0.08, value));
+              const apply = () => {{
+                diagram.style.transformOrigin = '0 0';
+                diagram.style.transform =
+                  `translate(${{state.x}}px, ${{state.y}}px) scale(${{state.scale}})`;
+              }};
+              const fit = () => {{
+                const svg = diagram.querySelector('svg');
+                if (!svg) return;
+                const box = svg.viewBox?.baseVal;
+                const width = box?.width || svg.getBBox().width;
+                const height = box?.height || svg.getBBox().height;
+                if (!width || !height) return;
+                diagram.style.width = `${{width}}px`;
+                diagram.style.height = `${{height}}px`;
+                state.scale = clamp(Math.min(
+                  (viewport.clientWidth - 40) / width,
+                  (viewport.clientHeight - 40) / height,
+                ));
+                state.x = (viewport.clientWidth - width * state.scale) / 2;
+                state.y = (viewport.clientHeight - height * state.scale) / 2;
+                apply();
+              }};
+              const zoom = (factor, clientX, clientY) => {{
+                const bounds = viewport.getBoundingClientRect();
+                const px = clientX - bounds.left;
+                const py = clientY - bounds.top;
+                const next = clamp(state.scale * factor);
+                state.x = px - (px - state.x) * next / state.scale;
+                state.y = py - (py - state.y) * next / state.scale;
+                state.scale = next;
+                apply();
+              }};
+              viewport.addEventListener('wheel', event => {{
+                event.preventDefault();
+                zoom(event.deltaY < 0 ? 1.15 : 1 / 1.15, event.clientX, event.clientY);
+              }}, {{passive: false}});
+              viewport.addEventListener('pointerdown', event => {{
+                state.dragging = true;
+                state.pointerX = event.clientX;
+                state.pointerY = event.clientY;
+                viewport.setPointerCapture(event.pointerId);
+                viewport.style.cursor = 'grabbing';
+              }});
+              viewport.addEventListener('pointermove', event => {{
+                if (!state.dragging) return;
+                state.x += event.clientX - state.pointerX;
+                state.y += event.clientY - state.pointerY;
+                state.pointerX = event.clientX;
+                state.pointerY = event.clientY;
+                apply();
+              }});
+              const stopDragging = () => {{
+                state.dragging = false;
+                viewport.style.cursor = 'grab';
+              }};
+              viewport.addEventListener('pointerup', stopDragging);
+              viewport.addEventListener('pointercancel', stopDragging);
+              viewport.addEventListener('dblclick', fit);
+              window.sdsDependencyGraphStates ??= {{}};
+              window.sdsDependencyGraphStates[viewportId] = {{state, apply, fit, zoom}};
+              window.sdsDependencyGraphControl = (id, action) => {{
+                const controls = window.sdsDependencyGraphStates?.[id];
+                if (!controls) return;
+                if (action === 'fit') controls.fit();
+                if (action === 'reset') {{
+                  controls.state.x = 20;
+                  controls.state.y = 20;
+                  controls.state.scale = 1;
+                  controls.apply();
+                }}
+                if (action === 'in' || action === 'out') {{
+                  const bounds = viewport.getBoundingClientRect();
+                  controls.zoom(
+                    action === 'in' ? 1.25 : 0.8,
+                    bounds.left + bounds.width / 2,
+                    bounds.top + bounds.height / 2,
+                  );
+                }}
+              }};
+              new MutationObserver(() => requestAnimationFrame(fit)).observe(
+                diagram, {{childList: true}}
+              );
+              requestAnimationFrame(fit);
+            }})()
+            """
+        )
 
 
 class AssetsStatusView(UIElem):
