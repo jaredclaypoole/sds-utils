@@ -131,19 +131,27 @@ def mark_scrubber_out_of_range(dashboard_df: pd.DataFrame, all_products_df: pd.D
     _apdf = _apdf.sort_index()
     _ddf = _ddf.sort_index()
 
-    for _idx, _row in _ddf.iterrows():
-        _in_scrubber = bool(_idx in _apdf.index)
-        _ddf.loc[_idx, "product_in_scrubber"] = _in_scrubber
-        if not _in_scrubber:
-            _scrubber_oor = True
-        else:
-            _scrubber_oor = not (
-                _apdf.loc[_idx].MinStartDate <= _row.Date <= _apdf.loc[_idx].MaxStartDate
-            )
-        _ddf.loc[_idx, "scrubber_out_of_range"] = _scrubber_oor
+    _scrubber_ranges_df = _apdf[["MinStartDate", "MaxStartDate"]].assign(
+        product_in_scrubber=True,
+    )
+    _ddf = _ddf.join(_scrubber_ranges_df, how="left", validate="many_to_one")
+    _ddf["product_in_scrubber"] = _ddf["product_in_scrubber"].eq(True)
 
-    for col in "product_in_scrubber scrubber_out_of_range".split():
-        _ddf[col] = _ddf[col].astype(bool)
+    _s_min_date = _ddf["MinStartDate"].where(
+        _ddf["product_in_scrubber"], _ddf["Date"],
+    )
+    _s_max_date = _ddf["MaxStartDate"].where(
+        _ddf["product_in_scrubber"], _ddf["Date"],
+    )
+    _date_in_range = (
+        _ddf["Date"].ge(_s_min_date)
+        & _ddf["Date"].le(_s_max_date)
+    )
+    _ddf["scrubber_out_of_range"] = ~(
+        _ddf["product_in_scrubber"] & _date_in_range
+    )
+
+    _ddf = _ddf.drop(columns=["MinStartDate", "MaxStartDate"])
 
     return _ddf.reset_index()
 
