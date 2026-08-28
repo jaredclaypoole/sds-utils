@@ -23,6 +23,9 @@ with app.setup:
     from reconcile import latest_attempt_failed_after_previous_success_db
 
 
+    index_cols = "Instrument Level Descriptor".split()
+
+
 @app.cell
 def _():
     # scrubber_base_dir = Path("output/july-august-only/no-combine-missing")
@@ -115,43 +118,34 @@ def _(
     return all_products_df, dashboard_df, missing_days_df, missing_repoints_df
 
 
-@app.cell
-def _():
-    index_cols = "Instrument Level Descriptor".split()
-    return (index_cols,)
+@app.function
+def mark_scrubber_out_of_range(dashboard_df: pd.DataFrame, all_products_df: pd.DataFrame) -> pd.DataFrame:
+    """Return a marked copy of dashboard_df"""
 
+    _apdf = all_products_df.copy()
+    _ddf = dashboard_df.copy()
 
-@app.cell
-def _(index_cols):
-    def mark_scrubber_out_of_range(dashboard_df: pd.DataFrame, all_products_df: pd.DataFrame) -> pd.DataFrame:
-        """Return a marked copy of dashboard_df"""
+    _apdf = _apdf.set_index(index_cols)
+    _ddf = _ddf.set_index(index_cols)
 
-        _apdf = all_products_df.copy()
-        _ddf = dashboard_df.copy()
+    _apdf = _apdf.sort_index()
+    _ddf = _ddf.sort_index()
 
-        _apdf = _apdf.set_index(index_cols)
-        _ddf = _ddf.set_index(index_cols)
+    for _idx, _row in _ddf.iterrows():
+        _in_scrubber = bool(_idx in _apdf.index)
+        _ddf.loc[_idx, "product_in_scrubber"] = _in_scrubber
+        if not _in_scrubber:
+            _scrubber_oor = True
+        else:
+            _scrubber_oor = not (
+                _apdf.loc[_idx].MinStartDate <= _row.Date <= _apdf.loc[_idx].MaxStartDate
+            )
+        _ddf.loc[_idx, "scrubber_out_of_range"] = _scrubber_oor
 
-        _apdf = _apdf.sort_index()
-        _ddf = _ddf.sort_index()
+    for col in "product_in_scrubber scrubber_out_of_range".split():
+        _ddf[col] = _ddf[col].astype(bool)
 
-        for _idx, _row in _ddf.iterrows():
-            _in_scrubber = bool(_idx in _apdf.index)
-            _ddf.loc[_idx, "product_in_scrubber"] = _in_scrubber
-            if not _in_scrubber:
-                _scrubber_oor = True
-            else:
-                _scrubber_oor = not (
-                    _apdf.loc[_idx].MinStartDate <= _row.Date <= _apdf.loc[_idx].MaxStartDate
-                )
-            _ddf.loc[_idx, "scrubber_out_of_range"] = _scrubber_oor
-    
-        for col in "product_in_scrubber scrubber_out_of_range".split():
-            _ddf[col] = _ddf[col].astype(bool)
-    
-        return _ddf.reset_index()
-
-    return (mark_scrubber_out_of_range,)
+    return _ddf.reset_index()
 
 
 @app.function
@@ -189,7 +183,7 @@ def _(dashboard_df):
 
 
 @app.cell
-def _(all_products_df, dashboard_df, mark_scrubber_out_of_range):
+def _(all_products_df, dashboard_df):
     ddf_markup = dashboard_df.copy()
 
     ddf_markup = mark_scrubber_out_of_range(ddf_markup, all_products_df)
@@ -487,7 +481,7 @@ def _():
 
 
 @app.cell
-def _(ddf4_grouped, ddf_4, index_cols):
+def _(ddf4_grouped, ddf_4):
     _dfg = ddf4_grouped
     _df = ddf_4.copy()
 
