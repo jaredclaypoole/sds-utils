@@ -2165,6 +2165,10 @@ class AssetsStatusView(UIElem):
                 visible_statuses=set(self.settings.visible_statuses),
             ).build()
             with ui.row().classes("w-full items-center") as self.drilldown_bar:
+                ui.button(
+                    icon="arrow_back",
+                    on_click=self._back_to_summary,
+                ).props("flat round dense").tooltip("Back to summary")
                 self.drilldown_chip = ui.chip(
                     "Summary filter",
                     icon="filter_alt",
@@ -2397,6 +2401,13 @@ class AssetsStatusView(UIElem):
     def _on_drilldown_chip_change(self, event: object) -> None:
         if getattr(event, "value", True) is False:
             self._clear_summary_drilldown()
+
+    def _back_to_summary(self) -> None:
+        self._clear_summary_drilldown()
+        self.view_mode = "summary"
+        self.toolbar.view_select.value = "summary"
+        self._apply_view_visibility()
+        self._schedule_settings_save()
 
     def _clear_summary_drilldown(self) -> None:
         if self.table.summary_drilldown is None:
