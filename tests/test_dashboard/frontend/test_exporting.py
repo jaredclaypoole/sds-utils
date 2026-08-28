@@ -5,6 +5,7 @@ from unittest import TestCase
 
 from sds_utils.dashboard.frontend.elems import AssetsStatusSummaryTable, AssetsStatusTable
 from sds_utils.dashboard.frontend.exporting import csv_table, plain_text_table
+from sds_utils.dashboard.frontend.summary import SummaryDrilldown
 
 
 class ExportFormattingTests(TestCase):
@@ -34,6 +35,34 @@ class ExportFormattingTests(TestCase):
 
 
 class TableExportSelectionTests(TestCase):
+    def test_summary_drilldown_is_included_in_shown_status_rows(self) -> None:
+        table = AssetsStatusTable(
+            on_metadata_change=lambda *_args: None,
+            on_settings_change=lambda: None,
+        )
+        table.all_rows = [
+            {
+                "instrument": "mag",
+                "data_level": "l1d",
+                "descriptor": "first",
+                "partition": "dated",
+                "status": "failed",
+            },
+            {
+                "instrument": "swe",
+                "data_level": "l1d",
+                "descriptor": "first",
+                "partition": "dated",
+                "status": "failed",
+            },
+        ]  # type: ignore[assignment]
+        table.summary_drilldown = SummaryDrilldown((("instrument", "mag"),))
+
+        shown_rows = table.rows_allowed_by_column_filters()
+
+        self.assertEqual(len(shown_rows), 1)
+        self.assertEqual(shown_rows[0]["instrument"], "mag")
+
     def test_summary_export_omits_disabled_dimensions(self) -> None:
         table = AssetsStatusSummaryTable(
             on_settings_change=lambda: None,

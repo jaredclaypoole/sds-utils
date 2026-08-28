@@ -781,6 +781,7 @@ class AssetsStatusTable(FilterableSortableTable):
             row
             for row in self.rows_in_timestamp_scope()
             if self._matches_column_filters(row)
+            and self._matches_summary_drilldown(row)
         ]
 
     def visible_rows(self) -> list[AssetStatusRow]:
@@ -789,7 +790,6 @@ class AssetsStatusTable(FilterableSortableTable):
             row
             for row in self.rows_allowed_by_column_filters()
             if row["status"] in self.visible_statuses
-            and self._matches_summary_drilldown(row)
         ]
 
     def set_summary_drilldown(self, drilldown: SummaryDrilldown | None) -> None:
@@ -2391,6 +2391,7 @@ class AssetsStatusView(UIElem):
             self.summary_table.date_aggregation,
         )
         self.table.set_summary_drilldown(drilldown)
+        self._update_summary()
         self.drilldown_chip.set_text(drilldown.label)
         self.drilldown_chip.set_value(True)
         self.view_mode = "all_rows"
