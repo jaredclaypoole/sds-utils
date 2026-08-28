@@ -1,12 +1,12 @@
-import time
-
 from functools import cache
+from threading import Lock
 
-from sds_utils.dashboard.backend.data import DagsterAssetsDataSource
+from sqlmodel import Session, select
+
 from db import AssetPartitionHistory, create_db_and_tables, engine
-from sqlmodel import select, Session
+from sds_utils.dashboard.backend.data import DagsterAssetsDataSource
 
-
+_db_lock = Lock()
 _db_init_done = False
 
 
@@ -22,9 +22,10 @@ def latest_attempt_failed_after_previous_success_cached(
 
 def latest_attempt_failed_after_previous_success_db(asset: str, partition: str) -> bool:
     global _db_init_done
-    if not _db_init_done:
-        create_db_and_tables()
-        _db_init_done = True
+    with _db_lock:
+        if not _db_init_done:
+            create_db_and_tables()
+            _db_init_done = True
 
     with Session(engine) as session:
         elems = session.exec(
