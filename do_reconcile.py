@@ -45,12 +45,11 @@ def _():
 
 
 @app.function
-def extract_day(partition: str) -> datetime.date:
+def extract_day(partition: str) -> pd.Timestamp:
     split = partition.split("_")
     if len(split) < 4:
         raise ValueError("TODO")
-    day = datetime.datetime.strptime(split[-3][:10], "%Y-%m-%d").date()
-    return day
+    return pd.to_datetime(split[-3][:10], format="%Y-%m-%d")
 
 
 @app.function
@@ -81,7 +80,10 @@ def post_process_scrubber(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for col in df.columns:
         if str(col).endswith("Date"):
-            df[col] = df[col].map(lambda s: datetime.datetime.strptime(str(s), '%Y%m%d').date())
+            df[col] = pd.to_datetime(
+                df[col].astype("string"),
+                format="%Y%m%d",
+            )
     # drop anomalous single-day row that breaks uniqueness
     mask = (
         (df.Instrument == "lo") &
@@ -96,7 +98,10 @@ def post_process_scrubber(df: pd.DataFrame) -> pd.DataFrame:
 def post_process_dashboard(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df = df.rename(columns={"Data level": "Level"})
-    df['Date'] = df.Partition.map(extract_day)
+    df['Date'] = pd.to_datetime(
+        df.Partition.str.split("_").str[-3].str[:10],
+        format="%Y-%m-%d",
+    )
     df['Type'] = df.Partition.map(extract_desc)
     df['Repoint'] = df.Partition.map(extract_repoint_number)
     df['Asset'] = df.Instrument + "_" + df.Level + "_" + df.Descriptor
@@ -137,15 +142,9 @@ def mark_scrubber_out_of_range(dashboard_df: pd.DataFrame, all_products_df: pd.D
     _ddf = _ddf.join(_scrubber_ranges_df, how="left", validate="many_to_one")
     _ddf["product_in_scrubber"] = _ddf["product_in_scrubber"].eq(True)
 
-    _s_min_date = _ddf["MinStartDate"].where(
-        _ddf["product_in_scrubber"], _ddf["Date"],
-    )
-    _s_max_date = _ddf["MaxStartDate"].where(
-        _ddf["product_in_scrubber"], _ddf["Date"],
-    )
     _date_in_range = (
-        _ddf["Date"].ge(_s_min_date)
-        & _ddf["Date"].le(_s_max_date)
+        _ddf["Date"].ge(_ddf["MinStartDate"])
+        & _ddf["Date"].le(_ddf["MaxStartDate"])
     )
     _ddf["scrubber_out_of_range"] = ~(
         _ddf["product_in_scrubber"] & _date_in_range
@@ -260,8 +259,8 @@ def _(mddf_days, missing_days_df):
 def _(days_index_cols, joined_df_days):
     _df = joined_df_days
     _df = _df.reset_index()
-    _df = _df[_df.Date >= datetime.date(2026, 7, 1)]
-    _df = _df[_df.Date < datetime.date(2026, 8, 1)]
+    _df = _df[_df.Date >= pd.Timestamp("2026-07-01")]
+    _df = _df[_df.Date < pd.Timestamp("2026-08-01")]
     _df = _df[_df.from_dashboard != _df.from_scrubber]
     print(f'len(df)={len(_df)!r}')
     days_index_not_in_scrubber = _df.set_index(days_index_cols).index
@@ -273,8 +272,8 @@ def _(days_index_cols, joined_df_days):
 @app.cell
 def _(missing_days_df):
     _df = missing_days_df
-    _df = _df[_df.Date >= datetime.date(2026, 7, 1)]
-    _df = _df[_df.Date < datetime.date(2026, 8, 1)]
+    _df = _df[_df.Date >= pd.Timestamp("2026-07-01")]
+    _df = _df[_df.Date < pd.Timestamp("2026-08-01")]
     print(f'len(df)={len(_df)!r}')
     _df;
     return
@@ -329,8 +328,8 @@ def _():
         -> list[tuple[int, int] | int]:
         return value_ranges(values, unit=unit, collapse=collapse)  # type: ignore
 
-    def date_ranges(dates: Iterable[datetime.date], collapse: bool = False) \
-        -> Sequence[tuple[datetime.date, datetime.date] | datetime.date]:
+    def date_ranges(dates: Iterable[pd.Timestamp], collapse: bool = False) \
+        -> Sequence[tuple[pd.Timestamp, pd.Timestamp] | pd.Timestamp]:
         return value_ranges(dates, collapse=collapse, unit=datetime.timedelta(days=1))  # type: ignore
 
     return date_ranges, partition_ranges
