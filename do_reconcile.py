@@ -35,27 +35,38 @@ def _():
     mo.md(r"""
     #### Define paths and constants
     """)
+    return
 
 
 @app.cell
 def _():
     # scrubber_base_dir = Path("output/july-august-only/no-combine-missing")
-    scrubber_base_dir = Path("output/scrubber/full/run_2026-08-26/no-combine-missing")
+    # scrubber_base_dir = Path("output/scrubber/full/run_2026-08-26/no-combine-missing")
+    scrubber_base_dir = Path("output/scrubber/full/run_2026-08-28_15-30")
     fpath_missing_days = scrubber_base_dir / "missing_days.csv"
     fpath_missing_repoints = scrubber_base_dir / "missing_repoints.csv"
     fpath_all_products = scrubber_base_dir / "all_products.csv"
 
     # dashboard_base_dir = Path("dashboard-output/july-only/run_mid-august")
     # fpath_dashboard_output = dashboard_base_dir / "imap-run-status-all-rows-20260820T172016Z.csv"
-    dashboard_base_dir = Path("dashboard-output/july-only/run_2026-08-28_07-50")
-    fpath_dashboard_output = (
-        dashboard_base_dir / "imap-run-status-all-rows-20260828T115625Z.csv"
+    # dashboard_base_dir = Path("dashboard-output/july-only/run_2026-08-28_07-50")
+    # fpath_dashboard_output = (
+    #     dashboard_base_dir / "imap-run-status-all-rows-20260828T115625Z.csv"
+    # )
+    fpath_dashboard_output = Path(
+        "dashboard-output/august-only/aug_1-14/run_2026-08-28_15-10/imap-run-status-all-rows-20260828T192006Z.csv"
     )
+    dashboard_base_dir = fpath_dashboard_output.parent
 
-    dashboard_start_date = pd.to_datetime(datetime.date(2026, 7, 1))
-    dashboard_end_date = pd.to_datetime(datetime.date(2026, 7, 31))
-    dashboard_start_repoint = 296
-    dashboard_end_repoint = 325
+    # dashboard_start_date = pd.to_datetime(datetime.date(2026, 7, 1))
+    # dashboard_end_date = pd.to_datetime(datetime.date(2026, 7, 31))
+    # dashboard_start_repoint = 296
+    # dashboard_end_repoint = 325
+
+    dashboard_start_date = pd.to_datetime(datetime.date(2026, 8, 1))
+    dashboard_end_date = pd.to_datetime(datetime.date(2026, 8, 14))
+    dashboard_start_repoint = 327
+    dashboard_end_repoint = 340
     return (
         dashboard_end_date,
         dashboard_end_repoint,
@@ -73,6 +84,7 @@ def _():
     mo.md(r"""
     #### defns
     """)
+    return
 
 
 @app.function
@@ -158,6 +170,7 @@ def _():
     mo.md(r"""
     #### Load csvs
     """)
+    return
 
 
 @app.cell
@@ -179,6 +192,7 @@ def _():
     mo.md(r"""
     #### defns
     """)
+    return
 
 
 @app.function
@@ -349,6 +363,7 @@ def _():
     mo.md(r"""
     #### Filter dfs
     """)
+    return
 
 
 @app.cell
@@ -459,9 +474,9 @@ def _(date_ranges, ddf_markup):
 
 
 @app.cell
-def _(mddf, start_date):
+def _(dashboard_start_date, mddf):
     def _f_mask(date_ranges):
-        if date_ranges[0][0] == start_date:
+        if date_ranges[0][0] == dashboard_start_date:
             return True
         return False
 
@@ -486,11 +501,13 @@ def group_by_date_ranges(ddf: pd.DataFrame) -> pd.DataFrame:
 @app.cell
 def _(mddf):
     group_by_date_ranges(mddf)
+    return
 
 
 @app.cell
 def _(mddf_after):
     group_by_date_ranges(mddf_after)
+    return
 
 
 @app.cell(hide_code=True)
@@ -498,6 +515,7 @@ def _():
     mo.md(r"""
     ### Sandbox
     """)
+    return
 
 
 @app.cell
@@ -508,12 +526,14 @@ def _(ddf_markup):
     _df = _df[_df.Descriptor == "normmago"]
     _df = _df[_df.Status == "failed"]
     _df
+    return
 
 
 @app.cell
 def _(ddf_markup):
     _df = ddf_markup
     _df
+    return
 
 
 @app.cell(hide_code=True)
@@ -521,17 +541,20 @@ def _():
     mo.md(r"""
     ## Old
     """)
+    return
 
 
 @app.cell
 def _(ddf_markup):
     ddf_markup.scrubber_out_of_range.value_counts()
+    return
 
 
 @app.cell
 def _(ddf_markup):
     _mddf = ddf_markup
     len(_mddf), _mddf.product_in_scrubber.sum(), _mddf.scrubber_out_of_range.sum()
+    return
 
 
 @app.cell
@@ -539,6 +562,7 @@ def _(all_products_df):
 
     _apdf = all_products_df
     _apdf
+    return
 
 
 @app.cell
@@ -560,6 +584,7 @@ def _(dashboard_df):
 @app.cell
 def _(ddf):
     ddf
+    return
 
 
 @app.cell
@@ -598,6 +623,7 @@ def _(missing_days_df):
     _df = _df[_df.Date < pd.Timestamp("2026-08-01")]
     print(f"len(df)={len(_df)!r}")
     _df
+    return
 
 
 @app.cell
@@ -620,6 +646,7 @@ def _():
       * We're left with a single product that happened to be materialized in the past but had a failed latest run (with updated dependencies)
         * This would be invisible to the scrubber
     """)
+    return
 
 
 @app.cell
@@ -646,7 +673,7 @@ def _(date_ranges, ddf_days_not_in_scrubber):
     _df = _df[_mask]
     ddf_days_not_in_scrubber_filtered = _df
     _df
-    return ddf_days_not_in_scrubber_filtered, start_date
+    return (ddf_days_not_in_scrubber_filtered,)
 
 
 @app.cell
@@ -703,6 +730,7 @@ def _():
       * Next we drop products that are missing for a single range that includes the final repoint, as those will be invisible to the scrubber
       * We're left with just an l0 product, which the scrubber specifically excludes
     """)
+    return
 
 
 @app.cell
@@ -769,6 +797,7 @@ def _():
       * Revise the logic so missing products with no "bookending" presence are caught
         * This will catch products never materialized before or after a certain date
     """)
+    return
 
 
 @app.cell
@@ -784,6 +813,7 @@ def _(ddf4_grouped, ddf_4):
     _dfg.repoint_ranges
     _df.loc[_dfg.index, "repoint_ranges"] = _dfg.repoint_ranges
     _df
+    return
 
 
 @app.cell
@@ -798,6 +828,7 @@ def _(ddf_4):
             list(zip(_assets, _partitions, strict=True)),
             max_workers=10,
         )
+    return
 
 
 @app.cell
@@ -817,12 +848,14 @@ def _(ddf_4):
     _do_fcn_call = False
     if _do_fcn_call:
         latest_attempt_failed_after_previous_success_db(_asset, _partition)
+    return
 
 
 @app.cell
 def _(ddf_days_not_in_scrubber_filtered):
     _df = ddf_days_not_in_scrubber_filtered
     _df
+    return
 
 
 @app.cell
@@ -830,8 +863,8 @@ def _(ddf_4):
     _to_write = False
     _df = ddf_4
     if _to_write:
-        pd.DataFrame.to_csv(_df, "temp.csv")
-    # _df
+        pd.DataFrame.to_csv(_df, "temp.csv")    # _df
+    return
 
 
 @app.cell
