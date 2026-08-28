@@ -939,34 +939,6 @@ class AssetsStatusSummaryTable(UIElem):
         ]
 
     def render(self) -> None:
-        with ui.row().classes("w-full items-end gap-3") as self.aggregation_controls:
-            self.date_aggregation_select = (
-                ui.select(
-                    options={
-                        "all": "All dates",
-                        "day": "Single days",
-                        "week": "Weeks (Mon-Sun)",
-                        "days": "Multiple days",
-                    },
-                    value=self.date_aggregation,
-                    label="Date aggregation",
-                    on_change=self._on_date_aggregation_change,
-                )
-                .props("outlined")
-                .classes("w-56")
-            )
-            self.aggregation_days_input = (
-                ui.number(
-                    label="Days per period",
-                    value=self.aggregation_days,
-                    min=MIN_AGGREGATION_DAYS,
-                    step=1,
-                    on_change=self._on_aggregation_days_change,
-                )
-                .props("outlined")
-                .classes("w-40")
-            )
-            self.aggregation_days_input.set_visibility(False)
         self.table = ui.table(
             columns=self.columns,
             rows=[],
@@ -1041,9 +1013,6 @@ class AssetsStatusSummaryTable(UIElem):
         self.enabled_dimensions = set(settings.summary_group_dimensions)
         self.date_aggregation = settings.summary_date_aggregation
         self.aggregation_days = settings.summary_aggregation_days
-        self.date_aggregation_select.value = self.date_aggregation
-        self.aggregation_days_input.value = self.aggregation_days
-        self.aggregation_days_input.set_visibility(self.date_aggregation == "days")
         self.date_filters = {
             column: (
                 item.mode,
@@ -1160,20 +1129,12 @@ class AssetsStatusSummaryTable(UIElem):
         self._apply()
         self.on_settings_change()
 
-    def _on_date_aggregation_change(self, event: object) -> None:
-        value = str(getattr(event, "value", ""))
-        if value not in {"all", "day", "week", "days"}:
-            return
-        self.date_aggregation = cast(SummaryDateAggregation, value)
-        self.aggregation_days_input.set_visibility(value == "days")
+    def set_date_aggregation(self, value: SummaryDateAggregation) -> None:
+        self.date_aggregation = value
         self._apply()
         self.on_settings_change()
 
-    def _on_aggregation_days_change(self, event: object) -> None:
-        try:
-            value = int(getattr(event, "value", self.aggregation_days))
-        except (TypeError, ValueError):
-            return
+    def set_aggregation_days(self, value: int) -> None:
         if value < MIN_AGGREGATION_DAYS:
             return
         self.aggregation_days = value
@@ -1648,6 +1609,8 @@ class AssetToolbar(UIElem):
         on_unpartitioned_asset_change: Callable[..., object],
         on_view_change: Callable[..., object],
         on_dependency_graph_instrument_change: Callable[..., object],
+        on_date_aggregation_change: Callable[..., object],
+        on_aggregation_days_change: Callable[..., object],
         on_settings: Callable[..., object],
         on_export: Callable[..., object],
         on_refresh: Callable[..., object],
@@ -1663,6 +1626,8 @@ class AssetToolbar(UIElem):
         self.on_dependency_graph_instrument_change = (
             on_dependency_graph_instrument_change
         )
+        self.on_date_aggregation_change = on_date_aggregation_change
+        self.on_aggregation_days_change = on_aggregation_days_change
         self.on_settings = on_settings
         self.on_export = on_export
         self.on_refresh = on_refresh
@@ -1784,6 +1749,39 @@ class AssetToolbar(UIElem):
                 self.dependency_graph_instrument_select.set_visibility(
                     self.settings.view_mode == "dependency_graph"
                 )
+                self.date_aggregation_select = (
+                    ui.select(
+                        options={
+                            "all": "All dates",
+                            "day": "Single days",
+                            "week": "Weeks (Mon-Sun)",
+                            "days": "Multiple days",
+                        },
+                        value=self.settings.summary_date_aggregation,
+                        label="Date aggregation",
+                        on_change=self.on_date_aggregation_change,
+                    )
+                    .props("outlined")
+                    .classes("w-56")
+                )
+                self.date_aggregation_select.set_visibility(
+                    self.settings.view_mode == "summary"
+                )
+                self.aggregation_days_input = (
+                    ui.number(
+                        label="Days per period",
+                        value=self.settings.summary_aggregation_days,
+                        min=MIN_AGGREGATION_DAYS,
+                        step=1,
+                        on_change=self.on_aggregation_days_change,
+                    )
+                    .props("outlined")
+                    .classes("w-40")
+                )
+                self.aggregation_days_input.set_visibility(
+                    self.settings.view_mode == "summary"
+                    and self.settings.summary_date_aggregation == "days"
+                )
                 self.unpartitioned_asset_select = (
                     ui.select(
                         options={"hide": "Hide", "show": "Show"},
@@ -1810,6 +1808,8 @@ class AssetToolbar(UIElem):
         self.instrument_select.set_enabled(not loading)
         self.view_select.set_enabled(not loading)
         self.dependency_graph_instrument_select.set_enabled(not loading)
+        self.date_aggregation_select.set_enabled(not loading)
+        self.aggregation_days_input.set_enabled(not loading)
         self.start_select.set_enabled(not loading)
         self.end_select.set_enabled(not loading)
         self.timestamp_filtering_select.set_enabled(not loading)
@@ -2107,6 +2107,8 @@ class AssetsStatusView(UIElem):
                 on_dependency_graph_instrument_change=(
                     self._on_dependency_graph_instrument_change
                 ),
+                on_date_aggregation_change=self._on_date_aggregation_change,
+                on_aggregation_days_change=self._on_aggregation_days_change,
                 on_settings=self._open_settings,
                 on_export=self._open_export,
                 on_refresh=self._refresh,
@@ -2331,6 +2333,26 @@ class AssetsStatusView(UIElem):
         self._schedule_settings_save()
         await self._load_dependency_graph()
 
+    def _on_date_aggregation_change(self, event: object) -> None:
+        value = str(getattr(event, "value", ""))
+        if value not in {"all", "day", "week", "days"}:
+            return
+        self.toolbar.aggregation_days_input.set_visibility(value == "days")
+        self.summary_table.set_date_aggregation(cast(SummaryDateAggregation, value))
+
+    def _on_aggregation_days_change(self, event: object) -> None:
+        try:
+            value = int(
+                getattr(
+                    event,
+                    "value",
+                    self.summary_table.aggregation_days,
+                )
+            )
+        except (TypeError, ValueError):
+            return
+        self.summary_table.set_aggregation_days(value)
+
     async def _load_dependency_graph(self) -> None:
         instrument = self.dependency_graph_instrument
         self._dependency_graph_generation += 1
@@ -2362,8 +2384,10 @@ class AssetsStatusView(UIElem):
     def _apply_view_visibility(self) -> None:
         self.table.table.set_visibility(self.view_mode == "all_rows")
         self.summary_table.table.set_visibility(self.view_mode == "summary")
-        self.summary_table.aggregation_controls.set_visibility(
-            self.view_mode == "summary"
+        show_summary = self.view_mode == "summary"
+        self.toolbar.date_aggregation_select.set_visibility(show_summary)
+        self.toolbar.aggregation_days_input.set_visibility(
+            show_summary and self.summary_table.date_aggregation == "days"
         )
         show_graph = self.view_mode == "dependency_graph"
         self.toolbar.dependency_graph_instrument_select.set_visibility(show_graph)
