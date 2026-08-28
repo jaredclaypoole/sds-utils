@@ -2,6 +2,7 @@
 
 from collections import Counter
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import TypedDict
 
@@ -35,6 +36,90 @@ class SummaryRow(TypedDict):
     skipped: int
     not_run: int
     not_found: int
+
+
+@dataclass(frozen=True)
+class SummaryDrilldown:
+    """Transient detail-row filter represented by one summary row."""
+
+    dimensions: tuple[tuple[str, str | None], ...]
+    first_date: date | None = None
+    last_date: date | None = None
+    require_unpartitioned: bool = False
+
+    def matches(self, row: AssetStatusRow) -> bool:
+        """Return whether a detail row belongs to this summary group."""
+        if any(
+            _detail_dimension_value(row, dimension) != value
+            for dimension, value in self.dimensions
+        ):
+            return False
+        timestamp_range = partition_timestamp_range(row.get("partition", ""))
+        if self.require_unpartitioned:
+            return timestamp_range is None
+        if self.first_date is None or self.last_date is None:
+            return True
+        if timestamp_range is None:
+            return False
+        partition_date = timestamp_range[0].date()
+        return self.first_date <= partition_date <= self.last_date
+
+    @property
+    def label(self) -> str:
+        """Return a compact chip label for this filter."""
+        parts = [
+            "(empty)" if value is None or value == "" else value
+            for _dimension, value in self.dimensions
+        ]
+        if self.first_date is not None and self.last_date is not None:
+            parts.append(
+                self.first_date.isoformat()
+                if self.first_date == self.last_date
+                else f"{self.first_date.isoformat()} to {self.last_date.isoformat()}"
+            )
+        elif self.require_unpartitioned:
+            parts.append("without partition date")
+        return "Summary: " + (" / ".join(parts) if parts else "all rows")
+
+
+def summary_drilldown(
+    row: SummaryRow,
+    enabled_dimensions: set[str],
+    date_aggregation: SummaryDateAggregation,
+) -> SummaryDrilldown:
+    """Build a transient detail filter from a rendered summary row."""
+    values: dict[str, str | None] = {
+        "instrument": row["instrument"],
+        "data_level": row["data_level"],
+        "descriptor": row["descriptor"],
+        "missing_file": row["missing_file"],
+    }
+    dimensions = tuple(
+        (dimension, values[dimension])
+        for dimension in SUMMARY_DIMENSIONS
+        if dimension in enabled_dimensions
+    )
+    if date_aggregation == "all":
+        return SummaryDrilldown(dimensions)
+    if not row["first_date"]:
+        return SummaryDrilldown(dimensions, require_unpartitioned=True)
+    return SummaryDrilldown(
+        dimensions,
+        first_date=date.fromisoformat(row["first_date"]),
+        last_date=date.fromisoformat(row["last_date"]),
+    )
+
+
+def _detail_dimension_value(row: AssetStatusRow, dimension: str) -> str | None:
+    if dimension == "instrument":
+        return row["instrument"]
+    if dimension == "data_level":
+        return row["data_level"]
+    if dimension == "descriptor":
+        return row["descriptor"]
+    if dimension == "missing_file":
+        return row["missing_file"]
+    raise ValueError(f"Unknown summary dimension: {dimension}")
 
 
 def summarize_status_rows(

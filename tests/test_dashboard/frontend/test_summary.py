@@ -1,7 +1,11 @@
 from unittest import TestCase
 
 from sds_utils.dashboard.backend.data import parse_asset_name
-from sds_utils.dashboard.frontend.summary import SUMMARY_DIMENSIONS, summarize_status_rows
+from sds_utils.dashboard.frontend.summary import (
+    SUMMARY_DIMENSIONS,
+    summarize_status_rows,
+    summary_drilldown,
+)
 
 
 class SummaryTests(TestCase):
@@ -130,3 +134,99 @@ class SummaryTests(TestCase):
             (result[0]["first_date"], result[0]["last_date"]),
             ("2026-01-01", "2026-01-03"),
         )
+
+    def test_drilldown_matches_enabled_dimensions_and_date_bucket(self) -> None:
+        rows = [
+            {
+                "asset": "mag_l1d_first",
+                "instrument": "mag",
+                "data_level": "l1d",
+                "descriptor": "first",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "x_2026-01-02T00:00:00Z_to_2026-01-03T00:00:00Z",
+            },
+            {
+                "asset": "mag_l1d_first",
+                "instrument": "mag",
+                "data_level": "l1d",
+                "descriptor": "first",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "x_2026-01-09T00:00:00Z_to_2026-01-10T00:00:00Z",
+            },
+            {
+                "asset": "mag_l1d_second",
+                "instrument": "mag",
+                "data_level": "l1d",
+                "descriptor": "second",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "x_2026-01-02T00:00:00Z_to_2026-01-03T00:00:00Z",
+            },
+        ]
+        summary = summarize_status_rows(
+            rows, {"instrument", "descriptor"}, "week"
+        )  # type: ignore[arg-type]
+        first_group = next(
+            row
+            for row in summary
+            if row["descriptor"] == "first" and row["first_date"] == "2025-12-29"
+        )
+
+        drilldown = summary_drilldown(
+            first_group, {"instrument", "descriptor"}, "week"
+        )
+
+        self.assertTrue(drilldown.matches(rows[0]))  # type: ignore[arg-type]
+        self.assertFalse(drilldown.matches(rows[1]))  # type: ignore[arg-type]
+        self.assertFalse(drilldown.matches(rows[2]))  # type: ignore[arg-type]
+
+    def test_all_dates_drilldown_does_not_add_a_date_constraint(self) -> None:
+        rows = [
+            {
+                "asset": "mag_l1d_first",
+                "instrument": "mag",
+                "data_level": "l1d",
+                "descriptor": "first",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "x_2026-01-02T00:00:00Z_to_2026-01-03T00:00:00Z",
+            }
+        ]
+        summary = summarize_status_rows(rows, {"instrument"})  # type: ignore[arg-type]
+
+        drilldown = summary_drilldown(summary[0], {"instrument"}, "all")
+
+        self.assertTrue(drilldown.matches(rows[0]))  # type: ignore[arg-type]
+
+    def test_date_drilldown_keeps_unpartitioned_group_separate(self) -> None:
+        rows = [
+            {
+                "asset": "mag_l1d_first",
+                "instrument": "mag",
+                "data_level": "l1d",
+                "descriptor": "first",
+                "status": "not-found",
+                "missing_file": "",
+                "partition": "",
+            },
+            {
+                "asset": "mag_l1d_first",
+                "instrument": "mag",
+                "data_level": "l1d",
+                "descriptor": "first",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "x_2026-01-02T00:00:00Z_to_2026-01-03T00:00:00Z",
+            },
+        ]
+        summary = summarize_status_rows(rows, {"instrument"}, "day")  # type: ignore[arg-type]
+        unpartitioned_group = next(row for row in summary if not row["first_date"])
+
+        drilldown = summary_drilldown(
+            unpartitioned_group, {"instrument"}, "day"
+        )
+
+        self.assertTrue(drilldown.matches(rows[0]))  # type: ignore[arg-type]
+        self.assertFalse(drilldown.matches(rows[1]))  # type: ignore[arg-type]

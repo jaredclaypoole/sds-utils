@@ -59,7 +59,10 @@ from .settings_store import AppSettingsStore
 from .summary import (
     MIN_AGGREGATION_DAYS,
     SUMMARY_DIMENSIONS,
+    SummaryDrilldown,
+    SummaryRow,
     summarize_status_rows,
+    summary_drilldown,
 )
 
 logger = logging.getLogger("uvicorn.error.sds_utils.dashboard.frontend.ui")
@@ -600,6 +603,7 @@ class AssetsStatusTable(FilterableSortableTable):
         self.sort_column = "instrument"
         self.sort_descending = False
         self.visible_optional_columns: set[str] = set()
+        self.summary_drilldown: SummaryDrilldown | None = None
 
     def render(self) -> None:
         ui.add_css(
@@ -785,7 +789,12 @@ class AssetsStatusTable(FilterableSortableTable):
             row
             for row in self.rows_allowed_by_column_filters()
             if row["status"] in self.visible_statuses
+            and self._matches_summary_drilldown(row)
         ]
+
+    def set_summary_drilldown(self, drilldown: SummaryDrilldown | None) -> None:
+        self.summary_drilldown = drilldown
+        self._apply_filters()
 
     def export_data(
         self,
@@ -811,10 +820,14 @@ class AssetsStatusTable(FilterableSortableTable):
                 and self._matches_timestamp_filter(row)
                 and row["status"] in self.visible_statuses
                 and self._matches_column_filters(row)
+                and self._matches_summary_drilldown(row)
             ],
             self.sorting_rules,
         )
         self.table.update()
+
+    def _matches_summary_drilldown(self, row: AssetStatusRow) -> bool:
+        return self.summary_drilldown is None or self.summary_drilldown.matches(row)
 
     def set_sorting(self, rules: list[SortRule]) -> None:
         available = {str(column["name"]) for column in self.COLUMNS}
@@ -899,6 +912,7 @@ class AssetsStatusSummaryTable(UIElem):
     """Grouped status counts derived from the filtered detail rows."""
 
     DATE_COLUMNS = {"first_date", "last_date"}
+    LINK_COLUMN = {"name": "drilldown", "label": "", "field": "row_id"}
     COLUMNS = [
         {"name": "instrument", "label": "Instrument", "field": "instrument"},
         {"name": "data_level", "label": "Data level", "field": "data_level"},
@@ -920,10 +934,12 @@ class AssetsStatusSummaryTable(UIElem):
         on_settings_change: Callable[[], None],
         on_filter: Callable[[str, str, FilterValue], None],
         on_clear_filter: Callable[[str], None],
+        on_drilldown: Callable[[SummaryRow], None] | None = None,
     ) -> None:
         self.on_settings_change = on_settings_change
         self.on_filter = on_filter
         self.on_clear_filter = on_clear_filter
+        self.on_drilldown = on_drilldown or (lambda _row: None)
         self.source_rows: list[AssetStatusRow] = []
         self.enabled_dimensions = set(SUMMARY_DIMENSIONS)
         self.shared_filters: dict[str, tuple[str, FilterValue]] = {}
@@ -934,8 +950,11 @@ class AssetsStatusSummaryTable(UIElem):
         self.date_aggregation: SummaryDateAggregation = "all"
         self.aggregation_days = MIN_AGGREGATION_DAYS
         self.columns = [
-            {**column, "sortable": False, "filter_value": "", "sort_direction": ""}
-            for column in self.COLUMNS
+            {**self.LINK_COLUMN, "sortable": False},
+            *[
+                {**column, "sortable": False, "filter_value": "", "sort_direction": ""}
+                for column in self.COLUMNS
+            ],
         ]
 
     def render(self) -> None:
@@ -947,11 +966,27 @@ class AssetsStatusSummaryTable(UIElem):
         ).classes("w-full shadow-none border rounded-lg")
         self.table.props("flat bordered separator=horizontal")
         self.table.add_slot(
+            "body-cell-drilldown",
+            """
+            <q-td :props="props" class="q-px-xs">
+              <q-btn
+                icon="link"
+                flat round dense
+                color="primary"
+                aria-label="Show corresponding detail rows"
+                @click="$parent.$emit('summary-drilldown', props.row)"
+              >
+                <q-tooltip>Show corresponding detail rows</q-tooltip>
+              </q-btn>
+            </q-td>
+            """,
+        )
+        self.table.add_slot(
             "header-cell",
             """
             <q-th
               :props="props"
-              class="cursor-pointer"
+              :class="props.col.name === 'drilldown' ? '' : 'cursor-pointer'"
               @click="$parent.$emit('header-click', {column: props.col.name})"
             >
               <div class="row items-center no-wrap q-gutter-xs">
@@ -969,7 +1004,7 @@ class AssetsStatusSummaryTable(UIElem):
                   color="primary"
                   size="xs"
                 />
-                <q-icon name="expand_more" size="xs" />
+                <q-icon v-if="props.col.name !== 'drilldown'" name="expand_more" size="xs" />
               </div>
             </q-th>
             """,
@@ -995,6 +1030,7 @@ class AssetsStatusSummaryTable(UIElem):
                 """,
             )
         self.table.on("header-click", self._on_header_click)
+        self.table.on("summary-drilldown", self._on_drilldown)
         self.column_menu = ColumnMenu(
             on_filter=self.on_filter,
             on_clear_filter=self.on_clear_filter,
@@ -1058,8 +1094,11 @@ class AssetsStatusSummaryTable(UIElem):
         columns = [
             column
             for column in self.columns
-            if column["name"] not in SUMMARY_DIMENSIONS
-            or column["name"] in self.enabled_dimensions
+            if column["name"] != "drilldown"
+            and (
+                column["name"] not in SUMMARY_DIMENSIONS
+                or column["name"] in self.enabled_dimensions
+            )
         ]
         rows = _sorted_rows(list(self.table.rows), self.sorting_rules)
         return (
@@ -1069,6 +1108,8 @@ class AssetsStatusSummaryTable(UIElem):
 
     def _on_header_click(self, event: GenericEventArguments) -> None:
         column = str(event.args["column"])
+        if column == "drilldown":
+            return
         definition = next(item for item in self.columns if item["name"] == column)
         menu = (
             self.date_column_menu if column in self.DATE_COLUMNS else self.column_menu
@@ -1090,6 +1131,9 @@ class AssetsStatusSummaryTable(UIElem):
                 column in SUMMARY_DIMENSIONS or column in self.DATE_COLUMNS
             ),
         )
+
+    def _on_drilldown(self, event: GenericEventArguments) -> None:
+        self.on_drilldown(cast(SummaryRow, event.args))
 
     def _set_date_filter(self, column: str, mode: str, value: FilterValue) -> None:
         self.date_filters[column] = (mode, value)
@@ -2120,6 +2164,14 @@ class AssetsStatusView(UIElem):
                 on_change=self._on_status_filter_change,
                 visible_statuses=set(self.settings.visible_statuses),
             ).build()
+            with ui.row().classes("w-full items-center") as self.drilldown_bar:
+                self.drilldown_chip = ui.chip(
+                    "Summary filter",
+                    icon="filter_alt",
+                    removable=True,
+                    on_value_change=self._on_drilldown_chip_change,
+                ).props("outline")
+            self.drilldown_bar.set_visibility(False)
             self.table = AssetsStatusTable(
                 on_metadata_change=self._on_metadata_change,
                 on_settings_change=self._on_table_settings_change,
@@ -2137,6 +2189,7 @@ class AssetsStatusView(UIElem):
                 on_settings_change=self._on_summary_settings_change,
                 on_filter=self._set_shared_filter,
                 on_clear_filter=self._clear_shared_filter,
+                on_drilldown=self._on_summary_drilldown,
             ).build()
             self.summary_table.restore_settings(self.settings)
             self.table.set_sorting(self.sorting_rules)
@@ -2319,11 +2372,38 @@ class AssetsStatusView(UIElem):
         value = str(getattr(event, "value", ""))
         if value not in {"all_rows", "summary", "dependency_graph"}:
             return
+        if value == "summary":
+            self._clear_summary_drilldown()
         self.view_mode = value
         self._apply_view_visibility()
         self._schedule_settings_save()
         if value == "dependency_graph":
             await self._load_dependency_graph()
+
+    def _on_summary_drilldown(self, row: SummaryRow) -> None:
+        drilldown = summary_drilldown(
+            row,
+            self.summary_table.enabled_dimensions,
+            self.summary_table.date_aggregation,
+        )
+        self.table.set_summary_drilldown(drilldown)
+        self.drilldown_chip.set_text(drilldown.label)
+        self.drilldown_chip.set_value(True)
+        self.view_mode = "all_rows"
+        self.toolbar.view_select.value = "all_rows"
+        self._apply_view_visibility()
+        self._schedule_settings_save()
+
+    def _on_drilldown_chip_change(self, event: object) -> None:
+        if getattr(event, "value", True) is False:
+            self._clear_summary_drilldown()
+
+    def _clear_summary_drilldown(self) -> None:
+        if self.table.summary_drilldown is None:
+            return
+        self.table.set_summary_drilldown(None)
+        self.drilldown_bar.set_visibility(False)
+        self._update_summary()
 
     async def _on_dependency_graph_instrument_change(self, event: object) -> None:
         value = str(getattr(event, "value", ""))
@@ -2388,6 +2468,9 @@ class AssetsStatusView(UIElem):
         self.toolbar.date_aggregation_select.set_visibility(show_summary)
         self.toolbar.aggregation_days_input.set_visibility(
             show_summary and self.summary_table.date_aggregation == "days"
+        )
+        self.drilldown_bar.set_visibility(
+            self.view_mode == "all_rows" and self.table.summary_drilldown is not None
         )
         show_graph = self.view_mode == "dependency_graph"
         self.toolbar.dependency_graph_instrument_select.set_visibility(show_graph)
