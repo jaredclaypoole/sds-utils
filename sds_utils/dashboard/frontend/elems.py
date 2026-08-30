@@ -1990,7 +1990,7 @@ class SnapshotPartitionTypeFilter(UIElem):
                     on_click=self._open,
                 )
                 .props("outline no-caps align=left")
-                .classes("w-56")
+                .classes("w-56 h-14 whitespace-pre text-xs leading-tight")
             )
             with ui.menu() as self.menu:
                 with ui.column().classes("p-3 gap-1 min-w-64"):
@@ -2129,10 +2129,21 @@ class SnapshotPartitionTypeFilter(UIElem):
         self.on_apply(set(self.selected_types))
 
     def _update_button_label(self) -> None:
-        selected = len(self.selected_types)
-        total = len(self.available_types)
-        label = "All" if selected == total else f"{selected} of {total}"
-        self.button.set_text(f"Partition types: {label}")
+        if self.available_types and self.selected_types == self.available_types:
+            self.button.set_text("Partition types\nAll")
+            return
+        labels: list[str] = []
+        if "daily" in self.selected_types:
+            labels.append("Daily")
+        if "repoint" in self.selected_types:
+            labels.append("Repoint")
+        other_types = set(self._other_types())
+        selected_other = other_types & self.selected_types
+        if selected_other:
+            labels.append("Other" if selected_other == other_types else "Other-")
+        self.button.set_text(
+            "Partition types\n" + (", ".join(labels) if labels else "None")
+        )
 
 
 class SnapshotDataLevelFilter(UIElem):
@@ -2159,7 +2170,7 @@ class SnapshotDataLevelFilter(UIElem):
                     on_click=self._open,
                 )
                 .props("outline no-caps align=left")
-                .classes("w-48")
+                .classes("w-56 h-14 whitespace-pre text-xs leading-tight")
             )
             with ui.menu() as self.menu:
                 with ui.column().classes("p-3 gap-1 min-w-64"):
@@ -2301,10 +2312,19 @@ class SnapshotDataLevelFilter(UIElem):
         self.on_apply(set(self.selected_levels))
 
     def _update_button_label(self) -> None:
-        selected = len(self.selected_levels)
-        total = len(self.available_levels)
-        label = "All" if selected == total else f"{selected} of {total}"
-        self.button.set_text(f"{self.BUTTON_LABEL}: {label}")
+        if self.available_levels and self.selected_levels == self.available_levels:
+            self.button.set_text(f"{self.BUTTON_LABEL}\nAll")
+            return
+        labels: list[str] = []
+        for category in self.CATEGORIES:
+            levels = set(self._levels_for(category))
+            selected = levels & self.selected_levels
+            if selected:
+                label = self._category_label(category)
+                labels.append(label if selected == levels else f"{label}-")
+        self.button.set_text(
+            f"{self.BUTTON_LABEL}\n" + (", ".join(labels) if labels else "None")
+        )
 
 
 class SnapshotInstrumentFilter(SnapshotDataLevelFilter):

@@ -343,6 +343,56 @@ class SummaryTests(TestCase):
         self.assertEqual(level_filter.selected_levels, {"l1a", "ancillary"})
         level_filter.on_apply.assert_called_once_with({"l1a", "ancillary"})
 
+    def test_snapshot_filter_buttons_summarize_selected_child_groups(self) -> None:
+        partition_filter = object.__new__(SnapshotPartitionTypeFilter)
+        partition_filter.available_types = {
+            "daily",
+            "repoint",
+            "idex10day",
+            "weekly",
+        }
+        partition_filter.selected_types = {"daily", "idex10day"}
+        partition_filter.button = MagicMock()
+
+        partition_filter._update_button_label()
+
+        partition_filter.button.set_text.assert_called_once_with(
+            "Partition types\nDaily, Other-"
+        )
+        partition_filter.selected_types = set(partition_filter.available_types)
+        partition_filter._update_button_label()
+        self.assertEqual(
+            partition_filter.button.set_text.call_args.args[0],
+            "Partition types\nAll",
+        )
+
+        level_filter = object.__new__(SnapshotDataLevelFilter)
+        level_filter.available_levels = {"l0", "l2", "l3a", "l3b", "ancillary"}
+        level_filter.selected_levels = {"l0", "l2", "l3a"}
+        level_filter.button = MagicMock()
+
+        level_filter._update_button_label()
+
+        level_filter.button.set_text.assert_called_once_with(
+            "Data levels\nL0, L2, L3-"
+        )
+        level_filter.selected_levels = set(level_filter.available_levels)
+        level_filter._update_button_label()
+        self.assertEqual(
+            level_filter.button.set_text.call_args.args[0], "Data levels\nAll"
+        )
+
+        instrument_filter = object.__new__(SnapshotInstrumentFilter)
+        instrument_filter.available_levels = {"lo", "hi", "mag", "spacecraft"}
+        instrument_filter.selected_levels = {"lo", "mag", "spacecraft"}
+        instrument_filter.button = MagicMock()
+
+        instrument_filter._update_button_label()
+
+        instrument_filter.button.set_text.assert_called_once_with(
+            "Instruments\nENA-, In-Situ, Other"
+        )
+
     def test_snapshot_groups_each_instrument_into_the_same_date_rows(self) -> None:
         rows = [
             {
