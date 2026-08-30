@@ -55,6 +55,7 @@ from .models import (
     FilterMode,
     InstrumentName,
     OptionalColumn,
+    RecordsPerPage,
     SortColumn,
     StartMode,
     StatusName,
@@ -2240,6 +2241,7 @@ class AssetToolbar(UIElem):
         on_aggregation_days_change: Callable[..., object],
         on_partition_types_change: Callable[[set[str]], object],
         on_data_levels_change: Callable[[set[str]], object],
+        on_records_per_page_change: Callable[..., object],
         on_settings: Callable[..., object],
         on_export: Callable[..., object],
         on_refresh: Callable[..., object],
@@ -2259,6 +2261,7 @@ class AssetToolbar(UIElem):
         self.on_aggregation_days_change = on_aggregation_days_change
         self.on_partition_types_change = on_partition_types_change
         self.on_data_levels_change = on_data_levels_change
+        self.on_records_per_page_change = on_records_per_page_change
         self.on_settings = on_settings
         self.on_export = on_export
         self.on_refresh = on_refresh
@@ -2277,6 +2280,7 @@ class AssetToolbar(UIElem):
         self.cancel_load_button: Button
         self.partition_type_filter: SnapshotPartitionTypeFilter
         self.data_level_filter: SnapshotDataLevelFilter
+        self.records_per_page_select: Select
 
     def render(self) -> None:
         with ui.column().classes("w-full gap-3"):
@@ -2428,6 +2432,22 @@ class AssetToolbar(UIElem):
                 self.data_level_filter.container.set_visibility(
                     self.settings.view_mode == "snapshot"
                 )
+                self.records_per_page_select = (
+                    ui.select(
+                        options={
+                            10: "10",
+                            25: "25",
+                            50: "50",
+                            100: "100",
+                            250: "250",
+                        },
+                        value=self.settings.records_per_page,
+                        label="Records per page",
+                        on_change=self.on_records_per_page_change,
+                    )
+                    .props("outlined")
+                    .classes("w-44")
+                )
                 self.unpartitioned_asset_select = (
                     ui.select(
                         options={"hide": "Hide", "show": "Show"},
@@ -2459,6 +2479,7 @@ class AssetToolbar(UIElem):
         self.aggregation_days_input.set_enabled(interactive)
         self.partition_type_filter.button.set_enabled(interactive)
         self.data_level_filter.button.set_enabled(interactive)
+        self.records_per_page_select.set_enabled(interactive)
         self.start_select.set_enabled(not loading)
         self.end_select.set_enabled(not loading)
         self.timestamp_filtering_select.set_enabled(not loading)
@@ -2769,6 +2790,7 @@ class AssetsStatusView(UIElem):
                 on_aggregation_days_change=self._on_aggregation_days_change,
                 on_partition_types_change=self._on_partition_types_change,
                 on_data_levels_change=self._on_data_levels_change,
+                on_records_per_page_change=self._on_records_per_page_change,
                 on_settings=self._open_settings,
                 on_export=self._open_export,
                 on_refresh=self._refresh,
@@ -2835,6 +2857,7 @@ class AssetsStatusView(UIElem):
             ).build()
             self.snapshot_table.restore_settings(self.settings)
             self.snapshot_table.set_sorting(self.sorting_rules)
+            self._set_records_per_page(self.settings.records_per_page)
             self.dependency_graph_view = DependencyGraphView().build()
             self._apply_view_visibility()
             self.start_dialog = DateTimePickerDialog(
@@ -3140,6 +3163,26 @@ class AssetsStatusView(UIElem):
     def _on_data_levels_change(self, values: set[str]) -> None:
         self.snapshot_table.set_data_levels(values)
 
+    def _on_records_per_page_change(self, event: object) -> None:
+        try:
+            value = int(getattr(event, "value", self.settings.records_per_page))
+        except (TypeError, ValueError):
+            return
+        if value not in {10, 25, 50, 100, 250}:
+            return
+        self._set_records_per_page(value)
+        self._schedule_settings_save()
+
+    def _set_records_per_page(self, value: int) -> None:
+        for table in (
+            self.table.table,
+            self.summary_table.table,
+            self.snapshot_table.table,
+        ):
+            pagination = dict(table.pagination)
+            pagination["rowsPerPage"] = value
+            table.pagination = pagination
+
     async def _load_dependency_graph(self) -> None:
         instrument = self.dependency_graph_instrument
         self._dependency_graph_generation += 1
@@ -3333,6 +3376,9 @@ class AssetsStatusView(UIElem):
             timestamp_filtering=self.timestamp_filtering.value,
             show_unpartitioned_assets=self.table.show_unpartitioned_assets,
             view_mode=cast(ViewMode, self.view_mode),
+            records_per_page=cast(
+                RecordsPerPage, int(self.toolbar.records_per_page_select.value)
+            ),
             dependency_graph_instrument=cast(
                 DependencyGraphInstrument, self.dependency_graph_instrument
             ),

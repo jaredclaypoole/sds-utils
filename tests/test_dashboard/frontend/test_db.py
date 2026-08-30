@@ -111,6 +111,7 @@ class AppSettingsStoreTests(TestCase):
         self.assertEqual(settings.start_mode, "days_3")
         self.assertEqual(settings.end_mode, "now")
         self.assertEqual(settings.instrument, "all")
+        self.assertEqual(settings.records_per_page, 25)
         self.assertNotIn("not-run", settings.visible_statuses)
         self.assertEqual(settings.visible_optional_columns, [])
 
@@ -130,6 +131,7 @@ class AppSettingsStoreTests(TestCase):
             timestamp_filtering="partition_only",
             show_unpartitioned_assets=True,
             view_mode="dependency_graph",
+            records_per_page=100,
             dependency_graph_instrument="spacecraft",
             summary_column_filters={
                 "instrument": ColumnFilterSettings(mode="pattern", value="^mag$")

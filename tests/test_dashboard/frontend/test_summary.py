@@ -513,6 +513,19 @@ class SummaryTests(TestCase):
 
 
 class SnapshotNavigationTests(IsolatedAsyncioTestCase):
+    def test_records_per_page_updates_every_asset_table(self) -> None:
+        view = object.__new__(AssetsStatusView)
+        view.table = MagicMock()
+        view.summary_table = MagicMock()
+        view.snapshot_table = MagicMock()
+        for wrapper in (view.table, view.summary_table, view.snapshot_table):
+            wrapper.table.pagination = {"rowsPerPage": 25}
+
+        view._set_records_per_page(100)
+
+        for wrapper in (view.table, view.summary_table, view.snapshot_table):
+            self.assertEqual(wrapper.table.pagination["rowsPerPage"], 100)
+
     async def test_instrument_header_selects_that_instrument(self) -> None:
         view = object.__new__(AssetsStatusView)
         view.instrument = "all"

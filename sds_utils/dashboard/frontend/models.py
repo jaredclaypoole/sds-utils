@@ -99,6 +99,7 @@ StartMode = Literal[
 ]
 EndMode = Literal["now", "custom"]
 ViewMode = Literal["all_rows", "summary", "snapshot", "dependency_graph"]
+RecordsPerPage = Literal[10, 25, 50, 100, 250]
 OptionalColumn = Literal["tags", "notes"]
 SummarySortColumn = Literal[
     "",
@@ -168,6 +169,7 @@ class AppSettingsState(BaseModel):
     ] = "partition_only"
     show_unpartitioned_assets: bool = False
     view_mode: ViewMode = "all_rows"
+    records_per_page: RecordsPerPage = 25
     dependency_graph_instrument: DependencyGraphInstrument = "mag"
     summary_column_filters: dict[str, ColumnFilterSettings] = PydanticField(
         default_factory=dict
