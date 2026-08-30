@@ -1270,7 +1270,7 @@ class AssetsStatusSnapshotTable(UIElem):
             row_key="row_id",
             pagination={"rowsPerPage": 25},
         ).classes("w-full shadow-none border rounded-lg")
-        self.table.props("flat bordered separator=horizontal")
+        self.table.props("flat bordered separator=cell")
         for instrument in ALL_INSTRUMENTS:
             self.table.add_slot(
                 f"body-cell-{instrument}",
@@ -1278,7 +1278,7 @@ class AssetsStatusSnapshotTable(UIElem):
                 <q-td :props="props" class="font-mono whitespace-pre">
                   <template v-for="(part, index) in props.value" :key="index">
                     <span :class="part.color">{{ part.text }}</span><span
-                      v-if="index < props.value.length - 1"
+                      v-if="index < props.value.length - 1" class="text-grey-3"
                     >/</span>
                   </template>
                   <q-tooltip>materialized / materializing / failed / skipped / not run / not found</q-tooltip>
