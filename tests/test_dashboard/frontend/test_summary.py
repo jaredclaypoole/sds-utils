@@ -1,11 +1,13 @@
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
 
 from sds_utils.dashboard.backend.data import parse_asset_name
 from sds_utils.dashboard.frontend.elems import (
     AssetsStatusSnapshotTable,
     AssetsStatusView,
     SnapshotDataLevelFilter,
+    SnapshotPartitionTypeFilter,
     SortRule,
 )
 from sds_utils.dashboard.frontend.summary import (
@@ -175,6 +177,60 @@ class SummaryTests(TestCase):
         self.assertEqual(SnapshotDataLevelFilter._category("l1a"), "l1")
         self.assertEqual(SnapshotDataLevelFilter._category("L3"), "l3")
         self.assertEqual(SnapshotDataLevelFilter._category("ancillary"), "other")
+
+    def test_snapshot_filter_all_parents_toggle_every_available_child(self) -> None:
+        partition_filter = object.__new__(SnapshotPartitionTypeFilter)
+        partition_filter._updating = False
+        partition_filter.available_types = {"daily", "repoint", "idex10day"}
+        partition_filter.pending_types = {"daily"}
+        partition_filter._sync_checkboxes = MagicMock()
+
+        partition_filter._all_changed(SimpleNamespace(value=True))
+        self.assertEqual(
+            partition_filter.pending_types,
+            {"daily", "repoint", "idex10day"},
+        )
+        partition_filter._all_changed(SimpleNamespace(value=False))
+        self.assertEqual(partition_filter.pending_types, set())
+
+        level_filter = object.__new__(SnapshotDataLevelFilter)
+        level_filter._updating = False
+        level_filter.available_levels = {"l1a", "l2", "ancillary"}
+        level_filter.pending_levels = {"l1a"}
+        level_filter._sync_checkboxes = MagicMock()
+
+        level_filter._all_changed(SimpleNamespace(value=True))
+        self.assertEqual(
+            level_filter.pending_levels,
+            {"l1a", "l2", "ancillary"},
+        )
+        level_filter._all_changed(SimpleNamespace(value=False))
+        self.assertEqual(level_filter.pending_levels, set())
+
+    def test_dismissing_snapshot_filter_menus_commits_pending_values(self) -> None:
+        partition_filter = object.__new__(SnapshotPartitionTypeFilter)
+        partition_filter.pending_types = {"daily"}
+        partition_filter.selected_types = {"daily", "repoint"}
+        partition_filter.available_types = {"daily", "repoint"}
+        partition_filter.button = MagicMock()
+        partition_filter.on_apply = MagicMock()
+
+        partition_filter._menu_hidden()
+
+        self.assertEqual(partition_filter.selected_types, {"daily"})
+        partition_filter.on_apply.assert_called_once_with({"daily"})
+
+        level_filter = object.__new__(SnapshotDataLevelFilter)
+        level_filter.pending_levels = {"l1a", "ancillary"}
+        level_filter.selected_levels = {"l1a"}
+        level_filter.available_levels = {"l1a", "ancillary"}
+        level_filter.button = MagicMock()
+        level_filter.on_apply = MagicMock()
+
+        level_filter._menu_hidden()
+
+        self.assertEqual(level_filter.selected_levels, {"l1a", "ancillary"})
+        level_filter.on_apply.assert_called_once_with({"l1a", "ancillary"})
 
     def test_snapshot_groups_each_instrument_into_the_same_date_rows(self) -> None:
         rows = [

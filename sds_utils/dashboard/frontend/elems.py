@@ -1917,21 +1917,28 @@ class SnapshotPartitionTypeFilter(UIElem):
             )
             with ui.menu() as self.menu:
                 with ui.column().classes("p-3 gap-1 min-w-64"):
-                    self.daily_checkbox = ui.checkbox(
-                        "Daily", on_change=self._daily_changed
-                    )
-                    self.repoint_checkbox = ui.checkbox(
-                        "Repoint", on_change=self._repoint_changed
-                    )
-                    self.other_checkbox = ui.checkbox(
-                        "Other", on_change=self._other_changed
+                    self.all_checkbox = ui.checkbox(
+                        "All", on_change=self._all_changed
                     ).props("indeterminate-icon=remove")
-                    with ui.column().classes("pl-7 gap-0") as self.other_container:
-                        pass
+                    with ui.column().classes(
+                        "pl-5 ml-2 gap-1 border-l border-slate-200"
+                    ):
+                        self.daily_checkbox = ui.checkbox(
+                            "Daily", on_change=self._daily_changed
+                        )
+                        self.repoint_checkbox = ui.checkbox(
+                            "Repoint", on_change=self._repoint_changed
+                        )
+                        self.other_checkbox = ui.checkbox(
+                            "Other", on_change=self._other_changed
+                        ).props("indeterminate-icon=remove")
+                        with ui.column().classes("pl-7 gap-0") as self.other_container:
+                            pass
                     with ui.row().classes("w-full justify-end pt-2"):
                         ui.button("Apply", on_click=self._apply).props(
                             "unelevated no-caps"
                         )
+            self.menu.on("hide", self._menu_hidden)
         self._rebuild_other_checkboxes()
 
     def set_available_types(self, values: set[str]) -> None:
@@ -1967,6 +1974,15 @@ class SnapshotPartitionTypeFilter(UIElem):
     def _daily_changed(self, event: object) -> None:
         self._set_pending("daily", bool(getattr(event, "value", False)))
 
+    def _all_changed(self, event: object) -> None:
+        if self._updating:
+            return
+        if bool(getattr(event, "value", False)):
+            self.pending_types = set(self.available_types)
+        else:
+            self.pending_types.clear()
+        self._sync_checkboxes()
+
     def _repoint_changed(self, event: object) -> None:
         self._set_pending("repoint", bool(getattr(event, "value", False)))
 
@@ -1995,6 +2011,15 @@ class SnapshotPartitionTypeFilter(UIElem):
     def _sync_checkboxes(self) -> None:
         self._updating = True
         try:
+            selected = self.available_types & self.pending_types
+            all_value: bool | None = (
+                True
+                if self.available_types and selected == self.available_types
+                else None
+                if selected
+                else False
+            )
+            cast(Any, self.all_checkbox).set_value(all_value)
             self.daily_checkbox.set_value("daily" in self.pending_types)
             self.repoint_checkbox.set_value("repoint" in self.pending_types)
             for value, checkbox in self.other_checkboxes.items():
@@ -2013,9 +2038,17 @@ class SnapshotPartitionTypeFilter(UIElem):
             self._updating = False
 
     def _apply(self) -> None:
+        self._commit_pending()
+        self.menu.close()
+
+    def _menu_hidden(self) -> None:
+        self._commit_pending()
+
+    def _commit_pending(self) -> None:
+        if self.pending_types == self.selected_types:
+            return
         self.selected_types = set(self.pending_types)
         self._update_button_label()
-        self.menu.close()
         self.on_apply(set(self.selected_types))
 
     def _update_button_label(self) -> None:
@@ -2052,12 +2085,18 @@ class SnapshotDataLevelFilter(UIElem):
             )
             with ui.menu() as self.menu:
                 with ui.column().classes("p-3 gap-1 min-w-64"):
-                    with ui.column().classes("gap-1") as self.options_container:
+                    self.all_checkbox = ui.checkbox(
+                        "All", on_change=self._all_changed
+                    ).props("indeterminate-icon=remove")
+                    with ui.column().classes(
+                        "pl-5 ml-2 gap-1 border-l border-slate-200"
+                    ) as self.options_container:
                         pass
                     with ui.row().classes("w-full justify-end pt-2"):
                         ui.button("Apply", on_click=self._apply).props(
                             "unelevated no-caps"
                         )
+            self.menu.on("hide", self._menu_hidden)
         self._rebuild_checkboxes()
 
     @staticmethod
@@ -2119,6 +2158,15 @@ class SnapshotDataLevelFilter(UIElem):
             self.pending_levels.difference_update(levels)
         self._sync_checkboxes()
 
+    def _all_changed(self, event: object) -> None:
+        if self._updating:
+            return
+        if bool(getattr(event, "value", False)):
+            self.pending_levels = set(self.available_levels)
+        else:
+            self.pending_levels.clear()
+        self._sync_checkboxes()
+
     def _child_changed(self, level: str, event: object) -> None:
         if self._updating:
             return
@@ -2131,6 +2179,15 @@ class SnapshotDataLevelFilter(UIElem):
     def _sync_checkboxes(self) -> None:
         self._updating = True
         try:
+            selected_all = self.available_levels & self.pending_levels
+            all_value: bool | None = (
+                True
+                if self.available_levels and selected_all == self.available_levels
+                else None
+                if selected_all
+                else False
+            )
+            cast(Any, self.all_checkbox).set_value(all_value)
             for level, checkbox in self.child_checkboxes.items():
                 checkbox.set_value(level in self.pending_levels)
             for category, checkbox in self.parent_checkboxes.items():
@@ -2148,9 +2205,17 @@ class SnapshotDataLevelFilter(UIElem):
             self._updating = False
 
     def _apply(self) -> None:
+        self._commit_pending()
+        self.menu.close()
+
+    def _menu_hidden(self) -> None:
+        self._commit_pending()
+
+    def _commit_pending(self) -> None:
+        if self.pending_levels == self.selected_levels:
+            return
         self.selected_levels = set(self.pending_levels)
         self._update_button_label()
-        self.menu.close()
         self.on_apply(set(self.selected_levels))
 
     def _update_button_label(self) -> None:
