@@ -287,7 +287,9 @@ class SummaryTests(TestCase):
 
         table.set_instrument_aggregation("separate")
 
-        self.assertEqual(table.groups, ["mag-short", "lo-agg"])
+        self.assertEqual(table.groups, ["mag", "lo"])
+        self.assertEqual(table.aggregation_for_group("mag"), "short")
+        self.assertEqual(table.aggregation_for_group("lo"), "agg")
 
     def test_snapshot_filter_all_parents_toggle_every_available_child(self) -> None:
         partition_filter = object.__new__(SnapshotPartitionTypeFilter)
@@ -357,7 +359,7 @@ class SummaryTests(TestCase):
         partition_filter._update_button_label()
 
         partition_filter.button.set_text.assert_called_once_with(
-            "Partition types\nDaily, Other-"
+            "Partition types\nDaily, Agg-"
         )
         partition_filter.selected_types = set(partition_filter.available_types)
         partition_filter._update_button_label()

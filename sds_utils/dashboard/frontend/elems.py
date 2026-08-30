@@ -1273,6 +1273,7 @@ class AssetsStatusSnapshotTable(UIElem):
         self.selected_data_levels: set[str] | None = None
         self.selected_instruments: set[str] | None = None
         self.instrument_aggregation = "combined"
+        self.group_aggregation_kinds: dict[str, str] = {}
         self.date_aggregation: SummaryDateAggregation = "all"
         self.aggregation_days = MIN_AGGREGATION_DAYS
         self.columns = self._columns()
@@ -1379,6 +1380,9 @@ class AssetsStatusSnapshotTable(UIElem):
             return group.removesuffix("-short").removesuffix("-agg")
         return group
 
+    def aggregation_for_group(self, group: str) -> str | None:
+        return self.group_aggregation_kinds.get(group)
+
     def set_instrument(self, instrument: str) -> None:
         self.instrument = instrument
         self._apply()
@@ -1412,7 +1416,8 @@ class AssetsStatusSnapshotTable(UIElem):
         if self.date_aggregation == "days":
             self._apply()
 
-    def _apply(self) -> None:
+    def _apply(self) -> None:  # noqa: PLR0912
+        aggregation_labels: dict[str, str] | None = None
         source_rows = (
             self.source_rows
             if self.selected_partition_types is None
@@ -1463,16 +1468,27 @@ class AssetsStatusSnapshotTable(UIElem):
                     for row in source_rows
                     if (instrument := parse_asset_name(row["asset"])[0]) is not None
                 }
-                groups = [
-                    label
-                    for instrument in instruments
-                    for label in (f"{instrument}-short", f"{instrument}-agg")
-                    if label in populated_groups
-                ]
+                aggregation_labels = {}
+                groups = []
+                self.group_aggregation_kinds = {}
+                for instrument in instruments:
+                    populated = [
+                        kind
+                        for kind in ("short", "agg")
+                        if f"{instrument}-{kind}" in populated_groups
+                    ]
+                    for kind in populated:
+                        canonical = f"{instrument}-{kind}"
+                        label = instrument if len(populated) == 1 else canonical
+                        aggregation_labels[canonical] = label
+                        self.group_aggregation_kinds[label] = kind
+                        groups.append(label)
                 group_by = "instrument_aggregation"
             else:
                 groups = instruments
                 group_by = "instrument"
+                aggregation_labels = None
+                self.group_aggregation_kinds = {}
         else:
             groups = sorted(
                 {
@@ -1483,6 +1499,8 @@ class AssetsStatusSnapshotTable(UIElem):
                 }
             )
             group_by = "data_level"
+            aggregation_labels = None
+            self.group_aggregation_kinds = {}
         if groups != self.groups:
             self.groups = groups
             self.columns = self._columns()
@@ -1490,11 +1508,17 @@ class AssetsStatusSnapshotTable(UIElem):
             self._install_group_slots()
         snapshot_rows = snapshot_status_rows(
             source_rows,
-            self.groups,
+            list(aggregation_labels) if aggregation_labels else self.groups,
             self.date_aggregation,
             self.aggregation_days,
             group_by=group_by,
         )
+        if aggregation_labels:
+            for row in snapshot_rows:
+                row["counts"] = {
+                    label: row["counts"][canonical]
+                    for canonical, label in aggregation_labels.items()
+                }
         widths = {
             (group, status): max(
                 (len(str(row["counts"][group][status])) for row in snapshot_rows),
@@ -2007,7 +2031,7 @@ class SnapshotPartitionTypeFilter(UIElem):
                             "Repoint", on_change=self._repoint_changed
                         )
                         self.other_checkbox = ui.checkbox(
-                            "Other", on_change=self._other_changed
+                            "Agg", on_change=self._other_changed
                         ).props("indeterminate-icon=remove")
                         with ui.column().classes("pl-7 gap-0") as self.other_container:
                             pass
@@ -2140,7 +2164,7 @@ class SnapshotPartitionTypeFilter(UIElem):
         other_types = set(self._other_types())
         selected_other = other_types & self.selected_types
         if selected_other:
-            labels.append("Other" if selected_other == other_types else "Other-")
+            labels.append("Agg" if selected_other == other_types else "Agg-")
         self.button.set_text(
             "Partition types\n" + (", ".join(labels) if labels else "None")
         )
@@ -3238,10 +3262,11 @@ class AssetsStatusView(UIElem):
             return
         if self.instrument == "all":
             instrument = self.snapshot_table.instrument_for_group(group)
-            if group.endswith("-short"):
+            aggregation = self.snapshot_table.aggregation_for_group(group)
+            if aggregation == "short":
                 self.toolbar.instrument_aggregation_select.value = "short_only"
                 self.snapshot_table.set_instrument_aggregation("short_only")
-            elif group.endswith("-agg"):
+            elif aggregation == "agg":
                 self.toolbar.instrument_aggregation_select.value = "agg"
                 self.snapshot_table.set_instrument_aggregation("agg")
             self.toolbar.instrument_select.value = instrument
