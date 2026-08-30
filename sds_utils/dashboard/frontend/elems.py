@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -1268,6 +1269,7 @@ class AssetsStatusSnapshotTable(UIElem):
         self._installed_slots: set[str] = set()
         self.sorting_rules: list[SortRule] = []
         self.selected_partition_types: set[str] | None = None
+        self.selected_data_levels: set[str] | None = None
         self.date_aggregation: SummaryDateAggregation = "all"
         self.aggregation_days = MIN_AGGREGATION_DAYS
         self.columns = self._columns()
@@ -1348,6 +1350,10 @@ class AssetsStatusSnapshotTable(UIElem):
         self.selected_partition_types = set(values)
         self._apply()
 
+    def set_data_levels(self, values: set[str]) -> None:
+        self.selected_data_levels = set(values)
+        self._apply()
+
     def set_instrument(self, instrument: str) -> None:
         self.instrument = instrument
         self._apply()
@@ -1391,6 +1397,12 @@ class AssetsStatusSnapshotTable(UIElem):
                 if partition_type(row["partition"]) in self.selected_partition_types
             ]
         )
+        if self.selected_data_levels is not None:
+            source_rows = [
+                row
+                for row in source_rows
+                if row["data_level"] in self.selected_data_levels
+            ]
         if self.instrument == "all":
             groups = list(ALL_INSTRUMENTS)
             group_by = "instrument"
@@ -2013,6 +2025,141 @@ class SnapshotPartitionTypeFilter(UIElem):
         self.button.set_text(f"Partition types: {label}")
 
 
+class SnapshotDataLevelFilter(UIElem):
+    """Staged hierarchical data-level selector for snapshot rows."""
+
+    CATEGORIES = ("l0", "l1", "l2", "l3", "other")
+
+    def __init__(self, on_apply: Callable[[set[str]], object]) -> None:
+        self.on_apply = on_apply
+        self.available_levels: set[str] = set()
+        self.selected_levels: set[str] = set()
+        self.pending_levels: set[str] = set()
+        self._updating = False
+        self.parent_checkboxes: dict[str, Any] = {}
+        self.child_checkboxes: dict[str, Any] = {}
+
+    def render(self) -> None:
+        with ui.element("div") as self.container:
+            self.button = (
+                ui.button(
+                    "Data levels: All",
+                    icon="arrow_drop_down",
+                    on_click=self._open,
+                )
+                .props("outline no-caps align=left")
+                .classes("w-48")
+            )
+            with ui.menu() as self.menu:
+                with ui.column().classes("p-3 gap-1 min-w-64"):
+                    with ui.column().classes("gap-1") as self.options_container:
+                        pass
+                    with ui.row().classes("w-full justify-end pt-2"):
+                        ui.button("Apply", on_click=self._apply).props(
+                            "unelevated no-caps"
+                        )
+        self._rebuild_checkboxes()
+
+    @staticmethod
+    def _category(level: str) -> str:
+        normalized = level.casefold()
+        return normalized[:2] if re.match(r"^l[0-3]", normalized) else "other"
+
+    def _levels_for(self, category: str) -> list[str]:
+        return sorted(
+            level
+            for level in self.available_levels
+            if self._category(level) == category
+        )
+
+    def set_available_levels(self, values: set[str]) -> None:
+        newly_available = values - self.available_levels
+        self.available_levels = set(values)
+        self.selected_levels = (
+            self.selected_levels & self.available_levels
+        ) | newly_available
+        self.pending_levels = set(self.selected_levels)
+        self._rebuild_checkboxes()
+        self._update_button_label()
+
+    def _rebuild_checkboxes(self) -> None:
+        self.options_container.clear()
+        self.parent_checkboxes = {}
+        self.child_checkboxes = {}
+        with self.options_container:
+            for category in self.CATEGORIES:
+                self.parent_checkboxes[category] = ui.checkbox(
+                    category.upper() if category != "other" else "Other",
+                    on_change=lambda event, group=category: self._parent_changed(
+                        group, event
+                    ),
+                ).props("indeterminate-icon=remove")
+                with ui.column().classes("pl-7 gap-0"):
+                    for level in self._levels_for(category):
+                        self.child_checkboxes[level] = ui.checkbox(
+                            level,
+                            on_change=lambda event, value=level: self._child_changed(
+                                value, event
+                            ),
+                        )
+        self._sync_checkboxes()
+
+    def _open(self) -> None:
+        self.pending_levels = set(self.selected_levels)
+        self._sync_checkboxes()
+        self.menu.open()
+
+    def _parent_changed(self, category: str, event: object) -> None:
+        if self._updating:
+            return
+        levels = set(self._levels_for(category))
+        if bool(getattr(event, "value", False)):
+            self.pending_levels.update(levels)
+        else:
+            self.pending_levels.difference_update(levels)
+        self._sync_checkboxes()
+
+    def _child_changed(self, level: str, event: object) -> None:
+        if self._updating:
+            return
+        if bool(getattr(event, "value", False)):
+            self.pending_levels.add(level)
+        else:
+            self.pending_levels.discard(level)
+        self._sync_checkboxes()
+
+    def _sync_checkboxes(self) -> None:
+        self._updating = True
+        try:
+            for level, checkbox in self.child_checkboxes.items():
+                checkbox.set_value(level in self.pending_levels)
+            for category, checkbox in self.parent_checkboxes.items():
+                levels = set(self._levels_for(category))
+                selected = levels & self.pending_levels
+                value: bool | None = (
+                    True
+                    if levels and selected == levels
+                    else None
+                    if selected
+                    else False
+                )
+                cast(Any, checkbox).set_value(value)
+        finally:
+            self._updating = False
+
+    def _apply(self) -> None:
+        self.selected_levels = set(self.pending_levels)
+        self._update_button_label()
+        self.menu.close()
+        self.on_apply(set(self.selected_levels))
+
+    def _update_button_label(self) -> None:
+        selected = len(self.selected_levels)
+        total = len(self.available_levels)
+        label = "All" if selected == total else f"{selected} of {total}"
+        self.button.set_text(f"Data levels: {label}")
+
+
 class AssetToolbar(UIElem):
     def __init__(
         self,
@@ -2027,6 +2174,7 @@ class AssetToolbar(UIElem):
         on_date_aggregation_change: Callable[..., object],
         on_aggregation_days_change: Callable[..., object],
         on_partition_types_change: Callable[[set[str]], object],
+        on_data_levels_change: Callable[[set[str]], object],
         on_settings: Callable[..., object],
         on_export: Callable[..., object],
         on_refresh: Callable[..., object],
@@ -2045,6 +2193,7 @@ class AssetToolbar(UIElem):
         self.on_date_aggregation_change = on_date_aggregation_change
         self.on_aggregation_days_change = on_aggregation_days_change
         self.on_partition_types_change = on_partition_types_change
+        self.on_data_levels_change = on_data_levels_change
         self.on_settings = on_settings
         self.on_export = on_export
         self.on_refresh = on_refresh
@@ -2062,6 +2211,7 @@ class AssetToolbar(UIElem):
         self.export_button: Button
         self.cancel_load_button: Button
         self.partition_type_filter: SnapshotPartitionTypeFilter
+        self.data_level_filter: SnapshotDataLevelFilter
 
     def render(self) -> None:
         with ui.column().classes("w-full gap-3"):
@@ -2207,6 +2357,12 @@ class AssetToolbar(UIElem):
                 self.partition_type_filter.container.set_visibility(
                     self.settings.view_mode == "snapshot"
                 )
+                self.data_level_filter = SnapshotDataLevelFilter(
+                    self.on_data_levels_change
+                ).build()
+                self.data_level_filter.container.set_visibility(
+                    self.settings.view_mode == "snapshot"
+                )
                 self.unpartitioned_asset_select = (
                     ui.select(
                         options={"hide": "Hide", "show": "Show"},
@@ -2237,6 +2393,7 @@ class AssetToolbar(UIElem):
         self.date_aggregation_select.set_enabled(interactive)
         self.aggregation_days_input.set_enabled(interactive)
         self.partition_type_filter.button.set_enabled(interactive)
+        self.data_level_filter.button.set_enabled(interactive)
         self.start_select.set_enabled(not loading)
         self.end_select.set_enabled(not loading)
         self.timestamp_filtering_select.set_enabled(not loading)
@@ -2546,6 +2703,7 @@ class AssetsStatusView(UIElem):
                 on_date_aggregation_change=self._on_date_aggregation_change,
                 on_aggregation_days_change=self._on_aggregation_days_change,
                 on_partition_types_change=self._on_partition_types_change,
+                on_data_levels_change=self._on_data_levels_change,
                 on_settings=self._open_settings,
                 on_export=self._open_export,
                 on_refresh=self._refresh,
@@ -2914,6 +3072,9 @@ class AssetsStatusView(UIElem):
     def _on_partition_types_change(self, values: set[str]) -> None:
         self.snapshot_table.set_partition_types(values)
 
+    def _on_data_levels_change(self, values: set[str]) -> None:
+        self.snapshot_table.set_data_levels(values)
+
     async def _load_dependency_graph(self) -> None:
         instrument = self.dependency_graph_instrument
         self._dependency_graph_generation += 1
@@ -2952,6 +3113,9 @@ class AssetsStatusView(UIElem):
             show_date_aggregation and self.summary_table.date_aggregation == "days"
         )
         self.toolbar.partition_type_filter.container.set_visibility(
+            self.view_mode == "snapshot"
+        )
+        self.toolbar.data_level_filter.container.set_visibility(
             self.view_mode == "snapshot"
         )
         self.drilldown_bar.set_visibility(
@@ -3044,8 +3208,17 @@ class AssetsStatusView(UIElem):
         self.toolbar.partition_type_filter.set_available_types(
             available_partition_types
         )
+        available_data_levels = {
+            row["data_level"]
+            for row in self.table.rows_in_timestamp_scope()
+            if row["data_level"] is not None
+        }
+        self.toolbar.data_level_filter.set_available_levels(available_data_levels)
         self.snapshot_table.set_partition_types(
             self.toolbar.partition_type_filter.selected_types
+        )
+        self.snapshot_table.set_data_levels(
+            self.toolbar.data_level_filter.selected_levels
         )
         self.summary_table.set_source_rows(
             self._apply_snapshot_summary_filter(visible_rows)

@@ -5,6 +5,7 @@ from sds_utils.dashboard.backend.data import parse_asset_name
 from sds_utils.dashboard.frontend.elems import (
     AssetsStatusSnapshotTable,
     AssetsStatusView,
+    SnapshotDataLevelFilter,
     SortRule,
 )
 from sds_utils.dashboard.frontend.summary import (
@@ -144,6 +145,36 @@ class SummaryTests(TestCase):
         self.assertEqual(status_parts[0]["text"], "1")
         self.assertEqual(status_parts[2]["text"], "0")
         self.assertEqual(status_parts[3]["text"], "1")
+
+    def test_snapshot_filters_selected_data_levels(self) -> None:
+        table = AssetsStatusSnapshotTable("mag")
+        table.source_rows = [
+            {
+                "asset": "mag_l1a_first",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "daily_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+                "data_level": "l1a",
+            },
+            {
+                "asset": "mag_ancillary_second",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "daily_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+                "data_level": "ancillary",
+            },
+        ]
+        table.table = MagicMock()
+
+        table.set_data_levels({"ancillary"})
+
+        self.assertEqual(table.groups, ["ancillary"])
+        self.assertEqual(table.table.rows[0]["ancillary"][2]["text"], "1")
+
+    def test_data_level_filter_categories_special_prefixes_and_other(self) -> None:
+        self.assertEqual(SnapshotDataLevelFilter._category("l1a"), "l1")
+        self.assertEqual(SnapshotDataLevelFilter._category("L3"), "l3")
+        self.assertEqual(SnapshotDataLevelFilter._category("ancillary"), "other")
 
     def test_snapshot_groups_each_instrument_into_the_same_date_rows(self) -> None:
         rows = [
