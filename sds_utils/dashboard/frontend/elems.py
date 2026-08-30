@@ -1281,7 +1281,7 @@ class AssetsStatusSnapshotTable(UIElem):
             row_key="row_id",
             pagination={"rowsPerPage": 25},
         ).classes("w-full shadow-none border rounded-lg")
-        self.table.props("flat bordered separator=cell")
+        self.table.props("flat bordered dense separator=cell")
         self.table.add_slot(
             "header-cell",
             """
