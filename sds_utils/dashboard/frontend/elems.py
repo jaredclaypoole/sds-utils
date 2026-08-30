@@ -83,6 +83,13 @@ ALL_INSTRUMENTS = [
 ZERO_COUNTS_GRAY = True
 
 
+def _left_aligned_columns(
+    columns: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Return table definitions with consistently left-aligned cells."""
+    return [{**column, "align": "left"} for column in columns]
+
+
 def _format_status_timestamp(value: datetime) -> str:
     formatted = value.astimezone(UTC).isoformat(sep="_", timespec="seconds")
     return f"{formatted[:-6]} {formatted[-6:]}"
@@ -428,10 +435,12 @@ class FilterableSortableTable(UIElem):
         self.on_settings_change = on_settings_change
         self.column_filters: dict[str, tuple[str, FilterValue]] = {}
         self.sorting_rules: list[SortRule] = []
-        self.columns = [
-            {**column, "sortable": False, "filter_value": "", "sort_direction": ""}
-            for column in columns
-        ]
+        self.columns = _left_aligned_columns(
+            [
+                {**column, "sortable": False, "filter_value": "", "sort_direction": ""}
+                for column in columns
+            ]
+        )
         self.table: Table
 
     def _attach_column_controls(self) -> None:
@@ -949,13 +958,20 @@ class AssetsStatusSummaryTable(UIElem):
         self.sorting_rules: list[SortRule] = []
         self.date_aggregation: SummaryDateAggregation = "all"
         self.aggregation_days = MIN_AGGREGATION_DAYS
-        self.columns = [
-            {**self.LINK_COLUMN, "sortable": False},
-            *[
-                {**column, "sortable": False, "filter_value": "", "sort_direction": ""}
-                for column in self.COLUMNS
-            ],
-        ]
+        self.columns = _left_aligned_columns(
+            [
+                {**self.LINK_COLUMN, "sortable": False},
+                *[
+                    {
+                        **column,
+                        "sortable": False,
+                        "filter_value": "",
+                        "sort_direction": "",
+                    }
+                    for column in self.COLUMNS
+                ],
+            ]
+        )
 
     def render(self) -> None:
         self.table = ui.table(

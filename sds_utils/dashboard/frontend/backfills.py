@@ -26,6 +26,7 @@ from .elems import (
     SortRule,
     StatusFilterCard,
     UIElem,
+    _left_aligned_columns,
     _sorted_rows,
 )
 from .models import (
@@ -312,18 +313,20 @@ class BackfillsView(UIElem):
 
             self.loading_label: Label = ui.label().classes("text-sm text-slate-500")
             self.backfills_table: Table = ui.table(
-                columns=[
-                    {"name": "status", "label": "Status", "field": "status"},
-                    {"name": "title", "label": "Title", "field": "title"},
-                    {"name": "id", "label": "Backfill ID", "field": "id"},
-                    {"name": "created", "label": "Created", "field": "created"},
-                    {
-                        "name": "partitions",
-                        "label": "Partitions",
-                        "field": "partitions",
-                    },
-                    {"name": "actions", "label": "", "field": "actions"},
-                ],
+                columns=_left_aligned_columns(
+                    [
+                        {"name": "status", "label": "Status", "field": "status"},
+                        {"name": "title", "label": "Title", "field": "title"},
+                        {"name": "id", "label": "Backfill ID", "field": "id"},
+                        {"name": "created", "label": "Created", "field": "created"},
+                        {
+                            "name": "partitions",
+                            "label": "Partitions",
+                            "field": "partitions",
+                        },
+                        {"name": "actions", "label": "", "field": "actions"},
+                    ]
+                ),
                 rows=[],
                 row_key="id",
                 pagination={"rowsPerPage": 25},
@@ -501,22 +504,24 @@ class BackfillDetailView(UIElem):
 
     def _build_counts_table(self) -> None:
         self.asset_counts_table = ui.table(
-            columns=[
-                {"name": "asset", "label": "Asset", "field": "asset"},
-                {"name": "targeted", "label": "Targeted", "field": "targeted"},
-                {
-                    "name": "materialized",
-                    "label": "Materialized",
-                    "field": "materialized",
-                },
-                {"name": "failed", "label": "Failed", "field": "failed"},
-                {
-                    "name": "in_progress",
-                    "label": "In progress",
-                    "field": "in_progress",
-                },
-                {"name": "remaining", "label": "Remaining", "field": "remaining"},
-            ],
+            columns=_left_aligned_columns(
+                [
+                    {"name": "asset", "label": "Asset", "field": "asset"},
+                    {"name": "targeted", "label": "Targeted", "field": "targeted"},
+                    {
+                        "name": "materialized",
+                        "label": "Materialized",
+                        "field": "materialized",
+                    },
+                    {"name": "failed", "label": "Failed", "field": "failed"},
+                    {
+                        "name": "in_progress",
+                        "label": "In progress",
+                        "field": "in_progress",
+                    },
+                    {"name": "remaining", "label": "Remaining", "field": "remaining"},
+                ]
+            ),
             rows=[],
             row_key="asset",
             pagination={"rowsPerPage": 25},
