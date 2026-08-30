@@ -1,14 +1,109 @@
 from unittest import TestCase
+from unittest.mock import MagicMock
 
 from sds_utils.dashboard.backend.data import parse_asset_name
+from sds_utils.dashboard.frontend.elems import AssetsStatusSnapshotTable
 from sds_utils.dashboard.frontend.summary import (
     SUMMARY_DIMENSIONS,
+    snapshot_status_rows,
     summarize_status_rows,
     summary_drilldown,
 )
 
 
 class SummaryTests(TestCase):
+    def test_snapshot_padding_uses_maximum_for_each_instrument_and_status(self) -> None:
+        table = object.__new__(AssetsStatusSnapshotTable)
+        table.source_rows = [
+            {
+                "asset": f"codice_l1a_first_{index}",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "x_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            }
+            for index in range(10)
+        ] + [
+            {
+                "asset": "codice_l1a_second",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "x_2026-01-02T00:00:00Z_to_2026-01-03T00:00:00Z",
+            },
+            {
+                "asset": "codice_l1a_third",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "x_2026-01-02T00:00:00Z_to_2026-01-03T00:00:00Z",
+            },
+        ]
+        table.date_aggregation = "day"
+        table.aggregation_days = 2
+        table.table = MagicMock()
+
+        table._apply()
+
+        codice_parts = table.table.rows[0]["codice"]
+        self.assertEqual(codice_parts[0]["text"], "10")
+        self.assertEqual(table.table.rows[1]["codice"][0]["text"], " 1")
+        self.assertEqual(table.table.rows[1]["codice"][2]["text"], "1")
+
+    def test_snapshot_groups_each_instrument_into_the_same_date_rows(self) -> None:
+        rows = [
+            {
+                "asset": "mag_l1d_first",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "x_2026-01-02T00:00:00Z_to_2026-01-03T00:00:00Z",
+            },
+            {
+                "asset": "codice_l1a_first",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "x_2026-01-02T00:00:00Z_to_2026-01-03T00:00:00Z",
+            },
+            {
+                "asset": "mag_l1d_second",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "x_2026-01-03T00:00:00Z_to_2026-01-04T00:00:00Z",
+            },
+        ]
+
+        result = snapshot_status_rows(rows, ["codice", "mag"], "day")  # type: ignore[arg-type]
+
+        self.assertEqual(
+            [(row["first_date"], row["last_date"]) for row in result],
+            [("2026-01-02", "2026-01-02"), ("2026-01-03", "2026-01-03")],
+        )
+        self.assertEqual(result[0]["counts"]["codice"]["materialized"], 1)
+        self.assertEqual(result[0]["counts"]["mag"]["failed"], 1)
+        self.assertEqual(result[1]["counts"]["codice"]["materialized"], 0)
+        self.assertEqual(result[1]["counts"]["mag"]["materialized"], 1)
+
+    def test_snapshot_includes_spacecraft_and_all_six_statuses(self) -> None:
+        rows = [
+            {
+                "asset": "spacecraft_l1a_state",
+                "status": "not-found",
+                "missing_file": "",
+                "partition": "",
+            }
+        ]
+
+        result = snapshot_status_rows(rows, ["spacecraft"])  # type: ignore[arg-type]
+
+        self.assertEqual(
+            result[0]["counts"]["spacecraft"],
+            {
+                "materialized": 0,
+                "materializing": 0,
+                "failed": 0,
+                "skipped": 0,
+                "not-run": 0,
+                "not-found": 1,
+            },
+        )
+
     def test_summary_dates_use_partition_start_timestamps(self) -> None:
         rows = [
             {

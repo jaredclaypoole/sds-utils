@@ -38,6 +38,15 @@ class SummaryRow(TypedDict):
     not_found: int
 
 
+class SnapshotRow(TypedDict):
+    """Status counts for one date bucket, keyed further by instrument."""
+
+    row_id: str
+    first_date: str
+    last_date: str
+    counts: dict[str, dict[str, int]]
+
+
 @dataclass(frozen=True)
 class SummaryDrilldown:
     """Transient detail-row filter represented by one summary row."""
@@ -201,6 +210,67 @@ def summarize_status_rows(
                 "skipped": counts["skipped"],
                 "not_run": counts["not-run"],
                 "not_found": counts["not-found"],
+            }
+        )
+    return result
+
+
+def snapshot_status_rows(
+    rows: Iterable[AssetStatusRow],
+    instruments: Iterable[str],
+    date_aggregation: SummaryDateAggregation = "all",
+    aggregation_days: int = MIN_AGGREGATION_DAYS,
+) -> list[SnapshotRow]:
+    """Count each status by instrument and date bucket for the snapshot view."""
+    if aggregation_days < MIN_AGGREGATION_DAYS:
+        raise ValueError(f"aggregation_days must be at least {MIN_AGGREGATION_DAYS}")
+    instrument_names = tuple(instruments)
+    known_instruments = set(instrument_names)
+    grouped: dict[date | None, dict[str, Counter[str]]] = {}
+    start_dates: dict[date | None, list[date]] = {}
+    for row in rows:
+        instrument, _data_level, _descriptor = parse_asset_name(row["asset"])
+        if instrument not in known_instruments:
+            continue
+        timestamp_range = partition_timestamp_range(row.get("partition", ""))
+        partition_date = timestamp_range[0].date() if timestamp_range else None
+        bucket_start = _date_bucket_start(
+            partition_date, date_aggregation, aggregation_days
+        )
+        grouped.setdefault(bucket_start, {}).setdefault(instrument, Counter())[
+            row["status"]
+        ] += 1
+        if partition_date is not None:
+            start_dates.setdefault(bucket_start, []).append(partition_date)
+
+    result: list[SnapshotRow] = []
+    for bucket_start, instrument_counts in grouped.items():
+        dates = start_dates.get(bucket_start, [])
+        if bucket_start is None or date_aggregation == "all":
+            first_date = min(dates).isoformat() if dates else ""
+            last_date = max(dates).isoformat() if dates else ""
+        else:
+            bucket_days = (
+                1
+                if date_aggregation == "day"
+                else 7
+                if date_aggregation == "week"
+                else aggregation_days
+            )
+            first_date = bucket_start.isoformat()
+            last_date = (bucket_start + timedelta(days=bucket_days - 1)).isoformat()
+        result.append(
+            {
+                "row_id": bucket_start.isoformat() if bucket_start else "all",
+                "first_date": first_date,
+                "last_date": last_date,
+                "counts": {
+                    instrument: {
+                        status: instrument_counts.get(instrument, Counter())[status]
+                        for status in SUMMARY_STATUSES
+                    }
+                    for instrument in instrument_names
+                },
             }
         )
     return result

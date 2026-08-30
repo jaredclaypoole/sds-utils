@@ -98,7 +98,7 @@ StartMode = Literal[
     "custom_date",
 ]
 EndMode = Literal["now", "custom"]
-ViewMode = Literal["all_rows", "summary", "dependency_graph"]
+ViewMode = Literal["all_rows", "summary", "snapshot", "dependency_graph"]
 OptionalColumn = Literal["tags", "notes"]
 SummarySortColumn = Literal[
     "",

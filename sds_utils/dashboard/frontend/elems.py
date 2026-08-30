@@ -60,8 +60,10 @@ from .settings_store import AppSettingsStore
 from .summary import (
     MIN_AGGREGATION_DAYS,
     SUMMARY_DIMENSIONS,
+    SUMMARY_STATUSES,
     SummaryDrilldown,
     SummaryRow,
+    snapshot_status_rows,
     summarize_status_rows,
     summary_drilldown,
 )
@@ -1235,6 +1237,120 @@ class AssetsStatusSummaryTable(UIElem):
         self.table.columns = self.columns
 
 
+class AssetsStatusSnapshotTable(UIElem):
+    """Date-bucketed status counts with one compact column per instrument."""
+
+    STATUS_COLORS = {
+        "materialized": "text-green-700",
+        "materializing": "text-violet-700",
+        "failed": "text-red-600",
+        "skipped": "text-yellow-600",
+        "not-run": "text-black",
+        "not-found": "text-blue-700",
+    }
+
+    def __init__(self) -> None:
+        self.source_rows: list[AssetStatusRow] = []
+        self.date_aggregation: SummaryDateAggregation = "all"
+        self.aggregation_days = MIN_AGGREGATION_DAYS
+        columns: list[dict[str, object]] = [
+            {"name": "first_date", "label": "First date", "field": "first_date"},
+            {"name": "last_date", "label": "Last date", "field": "last_date"},
+        ]
+        columns.extend(
+            {"name": instrument, "label": instrument, "field": instrument}
+            for instrument in ALL_INSTRUMENTS
+        )
+        self.columns = _left_aligned_columns(columns)
+
+    def render(self) -> None:
+        self.table = ui.table(
+            columns=self.columns,
+            rows=[],
+            row_key="row_id",
+            pagination={"rowsPerPage": 25},
+        ).classes("w-full shadow-none border rounded-lg")
+        self.table.props("flat bordered separator=horizontal")
+        for instrument in ALL_INSTRUMENTS:
+            self.table.add_slot(
+                f"body-cell-{instrument}",
+                """
+                <q-td :props="props" class="font-mono whitespace-pre">
+                  <template v-for="(part, index) in props.value" :key="index">
+                    <span :class="part.color">{{ part.text }}</span><span
+                      v-if="index < props.value.length - 1"
+                    >/</span>
+                  </template>
+                  <q-tooltip>materialized / materializing / failed / skipped / not run / not found</q-tooltip>
+                </q-td>
+                """,
+            )
+
+    def restore_settings(self, settings: AppSettingsState) -> None:
+        self.date_aggregation = settings.summary_date_aggregation
+        self.aggregation_days = settings.summary_aggregation_days
+        self._apply()
+
+    def set_source_rows(self, rows: list[AssetStatusRow]) -> None:
+        self.source_rows = rows
+        self._apply()
+
+    def set_date_aggregation(self, value: SummaryDateAggregation) -> None:
+        self.date_aggregation = value
+        self._apply()
+
+    def set_aggregation_days(self, value: int) -> None:
+        if value < MIN_AGGREGATION_DAYS:
+            return
+        self.aggregation_days = value
+        if self.date_aggregation == "days":
+            self._apply()
+
+    def _apply(self) -> None:
+        snapshot_rows = snapshot_status_rows(
+            self.source_rows,
+            ALL_INSTRUMENTS,
+            self.date_aggregation,
+            self.aggregation_days,
+        )
+        widths = {
+            (instrument, status): max(
+                (len(str(row["counts"][instrument][status])) for row in snapshot_rows),
+                default=1,
+            )
+            for instrument in ALL_INSTRUMENTS
+            for status in SUMMARY_STATUSES
+        }
+        rendered_rows: list[dict[str, object]] = []
+        for row in snapshot_rows:
+            rendered: dict[str, object] = {
+                "row_id": row["row_id"],
+                "first_date": row["first_date"],
+                "last_date": row["last_date"],
+            }
+            for instrument in ALL_INSTRUMENTS:
+                rendered[instrument] = [
+                    {
+                        "text": str(row["counts"][instrument][status]).rjust(
+                            widths[(instrument, status)]
+                        ),
+                        "color": (
+                            "text-grey-3"
+                            if ZERO_COUNTS_GRAY
+                            and row["counts"][instrument][status] == 0
+                            else self.STATUS_COLORS[status]
+                        ),
+                    }
+                    for status in SUMMARY_STATUSES
+                ]
+            rendered_rows.append(rendered)
+        self.table.rows = sorted(
+            rendered_rows,
+            key=lambda row: (str(row["first_date"]), str(row["last_date"])),
+        )
+        self.table.update()
+
+
 class DateTimePickerDialog(UIElem):
     """UTC date-and-time picker used by the range controls."""
 
@@ -1788,6 +1904,7 @@ class AssetToolbar(UIElem):
                         options={
                             "all_rows": "All rows",
                             "summary": "Summary",
+                            "snapshot": "Snapshot",
                             "dependency_graph": "Dependency graph",
                         },
                         value=self.settings.view_mode,
@@ -1826,7 +1943,7 @@ class AssetToolbar(UIElem):
                     .classes("w-56")
                 )
                 self.date_aggregation_select.set_visibility(
-                    self.settings.view_mode == "summary"
+                    self.settings.view_mode in {"summary", "snapshot"}
                 )
                 self.aggregation_days_input = (
                     ui.number(
@@ -1840,7 +1957,7 @@ class AssetToolbar(UIElem):
                     .classes("w-40")
                 )
                 self.aggregation_days_input.set_visibility(
-                    self.settings.view_mode == "summary"
+                    self.settings.view_mode in {"summary", "snapshot"}
                     and self.settings.summary_date_aggregation == "days"
                 )
                 self.unpartitioned_asset_select = (
@@ -2218,6 +2335,8 @@ class AssetsStatusView(UIElem):
             self.table.set_sorting(self.sorting_rules)
             self.summary_table.set_sorting(self.sorting_rules)
             self.summary_table.set_shared_filters(self.table.column_filters)
+            self.snapshot_table = AssetsStatusSnapshotTable().build()
+            self.snapshot_table.restore_settings(self.settings)
             self.dependency_graph_view = DependencyGraphView().build()
             self._apply_view_visibility()
             self.start_dialog = DateTimePickerDialog(
@@ -2290,10 +2409,11 @@ class AssetsStatusView(UIElem):
 
     async def set_instrument(self, instrument: str) -> None:
         """Select an instrument and reload only its matching assets."""
+        previous_assets = tuple(self.assets)
         self.instrument = instrument
         self._filter_assets_by_instrument()
         self._schedule_settings_save()
-        if self.all_assets:
+        if self.all_assets and tuple(self.assets) != previous_assets:
             await self._load_all_assets()
 
     async def _on_instrument_change(self, event: object) -> None:
@@ -2304,7 +2424,8 @@ class AssetsStatusView(UIElem):
         self.assets = [
             asset
             for asset in self.all_assets
-            if self.instrument in {"all", asset.label}
+            if self.view_mode == "snapshot"
+            or self.instrument in {"all", asset.label}
             or asset.label.startswith(f"{self.instrument}_")
         ]
 
@@ -2393,15 +2514,19 @@ class AssetsStatusView(UIElem):
 
     async def _on_view_change(self, event: object) -> None:
         value = str(getattr(event, "value", ""))
-        if value not in {"all_rows", "summary", "dependency_graph"}:
+        if value not in {"all_rows", "summary", "snapshot", "dependency_graph"}:
             return
+        previous_assets = tuple(self.assets)
         if value == "summary":
             self._clear_summary_drilldown()
         self.view_mode = value
+        self._filter_assets_by_instrument()
         self._apply_view_visibility()
         self._schedule_settings_save()
         if value == "dependency_graph":
             await self._load_dependency_graph()
+        if tuple(self.assets) != previous_assets:
+            await self._load_all_assets()
 
     def _on_summary_drilldown(self, row: SummaryRow) -> None:
         drilldown = summary_drilldown(
@@ -2450,6 +2575,7 @@ class AssetsStatusView(UIElem):
             return
         self.toolbar.aggregation_days_input.set_visibility(value == "days")
         self.summary_table.set_date_aggregation(cast(SummaryDateAggregation, value))
+        self.snapshot_table.set_date_aggregation(cast(SummaryDateAggregation, value))
 
     def _on_aggregation_days_change(self, event: object) -> None:
         try:
@@ -2463,6 +2589,7 @@ class AssetsStatusView(UIElem):
         except (TypeError, ValueError):
             return
         self.summary_table.set_aggregation_days(value)
+        self.snapshot_table.set_aggregation_days(value)
 
     async def _load_dependency_graph(self) -> None:
         instrument = self.dependency_graph_instrument
@@ -2495,10 +2622,11 @@ class AssetsStatusView(UIElem):
     def _apply_view_visibility(self) -> None:
         self.table.table.set_visibility(self.view_mode == "all_rows")
         self.summary_table.table.set_visibility(self.view_mode == "summary")
-        show_summary = self.view_mode == "summary"
-        self.toolbar.date_aggregation_select.set_visibility(show_summary)
+        self.snapshot_table.table.set_visibility(self.view_mode == "snapshot")
+        show_date_aggregation = self.view_mode in {"summary", "snapshot"}
+        self.toolbar.date_aggregation_select.set_visibility(show_date_aggregation)
         self.toolbar.aggregation_days_input.set_visibility(
-            show_summary and self.summary_table.date_aggregation == "days"
+            show_date_aggregation and self.summary_table.date_aggregation == "days"
         )
         self.drilldown_bar.set_visibility(
             self.view_mode == "all_rows" and self.table.summary_drilldown is not None
@@ -2573,7 +2701,9 @@ class AssetsStatusView(UIElem):
             self.table.rows_allowed_by_column_filters(),
         )
         self.summary_table.set_shared_filters(self.table.column_filters)
-        self.summary_table.set_source_rows(self.table.visible_rows())
+        visible_rows = self.table.visible_rows()
+        self.summary_table.set_source_rows(visible_rows)
+        self.snapshot_table.set_source_rows(visible_rows)
 
     def _schedule_settings_save(self) -> None:
         ui.timer(0, self._save_settings, once=True)
