@@ -2020,19 +2020,24 @@ class AssetToolbar(UIElem):
                 ).props("flat round")
                 self.settings_button.tooltip("Settings")
 
-    def set_loading(self, loading: bool) -> None:
-        self.instrument_select.set_enabled(not loading)
-        self.view_select.set_enabled(not loading)
-        self.dependency_graph_instrument_select.set_enabled(not loading)
-        self.date_aggregation_select.set_enabled(not loading)
-        self.aggregation_days_input.set_enabled(not loading)
+    def set_loading(self, loading: bool, *, background: bool = False) -> None:
+        interactive = not loading or background
+        self.instrument_select.set_enabled(interactive)
+        self.view_select.set_enabled(interactive)
+        self.dependency_graph_instrument_select.set_enabled(interactive)
+        self.date_aggregation_select.set_enabled(interactive)
+        self.aggregation_days_input.set_enabled(interactive)
         self.start_select.set_enabled(not loading)
         self.end_select.set_enabled(not loading)
         self.timestamp_filtering_select.set_enabled(not loading)
-        self.unpartitioned_asset_select.set_enabled(not loading)
+        self.unpartitioned_asset_select.set_enabled(interactive)
         self.refresh_button.set_enabled(not loading)
-        self.export_button.set_enabled(not loading)
-        self.settings_button.set_enabled(not loading)
+        self.export_button.set_enabled(interactive)
+        self.settings_button.set_enabled(interactive)
+        if loading:
+            self.cancel_load_button.set_text(
+                "Cancel update" if background else "Cancel load"
+            )
         self.cancel_load_button.set_visibility(loading)
         self.cancel_load_button.set_enabled(loading)
 
@@ -2310,6 +2315,7 @@ class AssetsStatusView(UIElem):
         self.toolbar: AssetToolbar
         self.summary: StatusSummary
         self.table: AssetsStatusTable
+        self.range_label: Label
         self.loading_label: Label
 
     def render(self) -> None:
@@ -2333,7 +2339,9 @@ class AssetsStatusView(UIElem):
                 on_cancel_load=self._cancel_load,
                 settings=self.settings,
             ).build()
-            self.loading_label = ui.label().classes("text-sm text-slate-500")
+            with ui.column().classes("gap-0"):
+                self.range_label = ui.label().classes("text-sm text-slate-500")
+                self.loading_label = ui.label().classes("text-sm text-slate-500")
             self.summary = StatusSummary(
                 on_change=self._on_status_filter_change,
                 visible_statuses=set(self.settings.visible_statuses),
@@ -2922,13 +2930,14 @@ class AssetsStatusView(UIElem):
             self.timestamp_filtering is not TimestampFiltering.ACTIVE_ONLY
         )
         self.table.set_activity_window(window_start, window_end)
+        self._set_range_label(window_start, window_end)
         cached_rows = await self._load_cached_rows(
             window_start,
             window_end,
             include_recent_activity=include_recent_activity,
             include_partition_ranges=include_partition_ranges,
         )
-        self._show_cached_rows(cached_rows)
+        self._show_cached_rows(cached_rows, window_start, window_end)
         self._set_loading(
             True,
             (
@@ -2936,6 +2945,7 @@ class AssetsStatusView(UIElem):
                 if cached_rows is not None
                 else "Loading all assets for the selected date range…"
             ),
+            background=cached_rows is not None,
         )
         try:
             data_started = perf_counter()
@@ -2974,10 +2984,10 @@ class AssetsStatusView(UIElem):
             ui_started = perf_counter()
             self.table.set_rows(rows)
             self._update_summary()
-            self.loading_label.set_text(
-                f"{len(rows):,} partitions loaded · "
-                f"{_format_status_timestamp(window_start)} to "
-                f"{_format_status_timestamp(window_end)}"
+            self._set_range_label(
+                window_start,
+                window_end,
+                prefix=f"{len(rows):,} partitions loaded",
             )
             ui_elapsed = perf_counter() - ui_started
             logger.info(
@@ -2995,7 +3005,7 @@ class AssetsStatusView(UIElem):
             self._show_error("Could not load Dagster status rows", exc)
         finally:
             if load_generation == self._load_generation:
-                self.toolbar.set_loading(False)
+                self._set_loading(False)
                 self._load_task = None
 
     async def _load_cached_rows(
@@ -3017,12 +3027,19 @@ class AssetsStatusView(UIElem):
             assets=tuple(self.assets),
         )
 
-    def _show_cached_rows(self, rows: list[AssetStatusRow] | None) -> None:
+    def _show_cached_rows(
+        self,
+        rows: list[AssetStatusRow] | None,
+        start: datetime,
+        end: datetime,
+    ) -> None:
         self.table.set_rows(rows or [])
         self._update_summary()
         if rows is not None:
-            self.loading_label.set_text(
-                f"{len(rows):,} cached partitions loaded · checking for updates…"
+            self._set_range_label(
+                start,
+                end,
+                prefix=f"{len(rows):,} cached partitions loaded",
             )
 
     def _cancel_load(self) -> None:
@@ -3031,15 +3048,36 @@ class AssetsStatusView(UIElem):
         self._load_task = None
         if task is not None and not task.done():
             task.cancel()
-        self.table.set_rows([])
-        self._update_summary()
-        self.loading_label.set_text("Load cancelled · 0 partitions loaded")
+        retained_rows = len(self.table.table.rows)
+        self.loading_label.set_text(
+            f"Update cancelled · {retained_rows:,} displayed partitions retained"
+        )
         self.toolbar.set_loading(False)
 
-    def _set_loading(self, loading: bool, message: str = "") -> None:
-        self.toolbar.set_loading(loading)
+    def _set_loading(
+        self,
+        loading: bool,
+        message: str = "",
+        *,
+        background: bool = False,
+    ) -> None:
+        self.toolbar.set_loading(loading, background=background)
         if loading:
             self.loading_label.set_text(message)
+        else:
+            self.loading_label.set_text("")
+
+    def _set_range_label(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        prefix: str = "Selected range",
+    ) -> None:
+        self.range_label.set_text(
+            f"{prefix} · {_format_status_timestamp(start)} to "
+            f"{_format_status_timestamp(end)}"
+        )
 
     def _show_error(self, message: str, exc: Exception) -> None:
         response = getattr(exc, "response", None)
