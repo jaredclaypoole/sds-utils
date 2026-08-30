@@ -7,6 +7,7 @@ from sds_utils.dashboard.frontend.elems import (
     AssetsStatusSnapshotTable,
     AssetsStatusView,
     SnapshotDataLevelFilter,
+    SnapshotInstrumentFilter,
     SnapshotPartitionTypeFilter,
     SortRule,
 )
@@ -177,6 +178,44 @@ class SummaryTests(TestCase):
         self.assertEqual(SnapshotDataLevelFilter._category("l1a"), "l1")
         self.assertEqual(SnapshotDataLevelFilter._category("L3"), "l3")
         self.assertEqual(SnapshotDataLevelFilter._category("ancillary"), "other")
+
+    def test_snapshot_instrument_filter_categories(self) -> None:
+        for instrument in ("lo", "hi", "ultra"):
+            self.assertEqual(SnapshotInstrumentFilter._category(instrument), "ena")
+        for instrument in ("codice", "hit", "idex", "glows", "mag", "swapi", "swe"):
+            self.assertEqual(
+                SnapshotInstrumentFilter._category(instrument), "in_situ"
+            )
+        self.assertEqual(
+            SnapshotInstrumentFilter._category("spacecraft"), "other"
+        )
+
+    def test_all_instrument_snapshot_filter_hides_rows_and_columns(self) -> None:
+        table = AssetsStatusSnapshotTable("all")
+        table.source_rows = [
+            {
+                "asset": "mag_l1a_first",
+                "instrument": "mag",
+                "data_level": "l1a",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "daily_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            },
+            {
+                "asset": "lo_l1a_second",
+                "instrument": "lo",
+                "data_level": "l1a",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "daily_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            },
+        ]
+        table.table = MagicMock()
+
+        table.set_instruments({"lo"})
+
+        self.assertEqual(table.groups, ["lo"])
+        self.assertEqual(table.table.rows[0]["lo"][2]["text"], "1")
 
     def test_snapshot_filter_all_parents_toggle_every_available_child(self) -> None:
         partition_filter = object.__new__(SnapshotPartitionTypeFilter)

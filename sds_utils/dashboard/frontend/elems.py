@@ -1271,6 +1271,7 @@ class AssetsStatusSnapshotTable(UIElem):
         self.sorting_rules: list[SortRule] = []
         self.selected_partition_types: set[str] | None = None
         self.selected_data_levels: set[str] | None = None
+        self.selected_instruments: set[str] | None = None
         self.date_aggregation: SummaryDateAggregation = "all"
         self.aggregation_days = MIN_AGGREGATION_DAYS
         self.columns = self._columns()
@@ -1355,6 +1356,10 @@ class AssetsStatusSnapshotTable(UIElem):
         self.selected_data_levels = set(values)
         self._apply()
 
+    def set_instruments(self, values: set[str]) -> None:
+        self.selected_instruments = set(values)
+        self._apply()
+
     def set_instrument(self, instrument: str) -> None:
         self.instrument = instrument
         self._apply()
@@ -1404,8 +1409,31 @@ class AssetsStatusSnapshotTable(UIElem):
                 for row in source_rows
                 if row["data_level"] in self.selected_data_levels
             ]
+        if self.instrument == "all" and self.selected_instruments is not None:
+            source_rows = [
+                row
+                for row in source_rows
+                if parse_asset_name(row["asset"])[0] in self.selected_instruments
+            ]
         if self.instrument == "all":
-            groups = list(ALL_INSTRUMENTS)
+            discovered = {
+                instrument
+                for row in self.source_rows
+                if (instrument := parse_asset_name(row["asset"])[0]) is not None
+            }
+            ordered = [
+                *ALL_INSTRUMENTS,
+                *sorted(discovered - set(ALL_INSTRUMENTS)),
+            ]
+            groups = (
+                ordered
+                if self.selected_instruments is None
+                else [
+                    instrument
+                    for instrument in ordered
+                    if instrument in self.selected_instruments
+                ]
+            )
             group_by = "instrument"
         else:
             groups = sorted(
@@ -2062,7 +2090,8 @@ class SnapshotPartitionTypeFilter(UIElem):
 class SnapshotDataLevelFilter(UIElem):
     """Staged hierarchical data-level selector for snapshot rows."""
 
-    CATEGORIES = ("l0", "l1", "l2", "l3", "other")
+    CATEGORIES: tuple[str, ...] = ("l0", "l1", "l2", "l3", "other")
+    BUTTON_LABEL = "Data levels"
 
     def __init__(self, on_apply: Callable[[set[str]], object]) -> None:
         self.on_apply = on_apply
@@ -2077,7 +2106,7 @@ class SnapshotDataLevelFilter(UIElem):
         with ui.element("div") as self.container:
             self.button = (
                 ui.button(
-                    "Data levels: All",
+                    f"{self.BUTTON_LABEL}: All",
                     icon="arrow_drop_down",
                     on_click=self._open,
                 )
@@ -2105,6 +2134,10 @@ class SnapshotDataLevelFilter(UIElem):
         normalized = level.casefold()
         return normalized[:2] if re.match(r"^l[0-3]", normalized) else "other"
 
+    @staticmethod
+    def _category_label(category: str) -> str:
+        return category.upper() if category != "other" else "Other"
+
     def _levels_for(self, category: str) -> list[str]:
         return sorted(
             level
@@ -2129,7 +2162,7 @@ class SnapshotDataLevelFilter(UIElem):
         with self.options_container:
             for category in self.CATEGORIES:
                 self.parent_checkboxes[category] = ui.checkbox(
-                    category.upper() if category != "other" else "Other",
+                    self._category_label(category),
                     on_change=lambda event, group=category: self._parent_changed(
                         group, event
                     ),
@@ -2223,7 +2256,44 @@ class SnapshotDataLevelFilter(UIElem):
         selected = len(self.selected_levels)
         total = len(self.available_levels)
         label = "All" if selected == total else f"{selected} of {total}"
-        self.button.set_text(f"Data levels: {label}")
+        self.button.set_text(f"{self.BUTTON_LABEL}: {label}")
+
+
+class SnapshotInstrumentFilter(SnapshotDataLevelFilter):
+    """Hierarchical instrument selector for the all-instruments snapshot."""
+
+    CATEGORIES = ("ena", "in_situ", "other")
+    BUTTON_LABEL = "Instruments"
+    ENA_INSTRUMENTS = {"lo", "hi", "ultra"}
+    IN_SITU_INSTRUMENTS = {
+        "codice",
+        "hit",
+        "idex",
+        "glows",
+        "mag",
+        "swapi",
+        "swe",
+    }
+
+    @staticmethod
+    def _category(instrument: str) -> str:
+        normalized = instrument.casefold()
+        if normalized in SnapshotInstrumentFilter.ENA_INSTRUMENTS:
+            return "ena"
+        if normalized in SnapshotInstrumentFilter.IN_SITU_INSTRUMENTS:
+            return "in_situ"
+        return "other"
+
+    @staticmethod
+    def _category_label(category: str) -> str:
+        return {"ena": "ENA", "in_situ": "In-Situ", "other": "Other"}[category]
+
+    @property
+    def selected_instruments(self) -> set[str]:
+        return self.selected_levels
+
+    def set_available_instruments(self, values: set[str]) -> None:
+        self.set_available_levels(values)
 
 
 class AssetToolbar(UIElem):
@@ -2241,6 +2311,7 @@ class AssetToolbar(UIElem):
         on_aggregation_days_change: Callable[..., object],
         on_partition_types_change: Callable[[set[str]], object],
         on_data_levels_change: Callable[[set[str]], object],
+        on_snapshot_instruments_change: Callable[[set[str]], object],
         on_records_per_page_change: Callable[..., object],
         on_settings: Callable[..., object],
         on_export: Callable[..., object],
@@ -2261,6 +2332,7 @@ class AssetToolbar(UIElem):
         self.on_aggregation_days_change = on_aggregation_days_change
         self.on_partition_types_change = on_partition_types_change
         self.on_data_levels_change = on_data_levels_change
+        self.on_snapshot_instruments_change = on_snapshot_instruments_change
         self.on_records_per_page_change = on_records_per_page_change
         self.on_settings = on_settings
         self.on_export = on_export
@@ -2280,6 +2352,7 @@ class AssetToolbar(UIElem):
         self.cancel_load_button: Button
         self.partition_type_filter: SnapshotPartitionTypeFilter
         self.data_level_filter: SnapshotDataLevelFilter
+        self.snapshot_instrument_filter: SnapshotInstrumentFilter
         self.records_per_page_select: Select
 
     def render(self) -> None:
@@ -2432,6 +2505,13 @@ class AssetToolbar(UIElem):
                 self.data_level_filter.container.set_visibility(
                     self.settings.view_mode == "snapshot"
                 )
+                self.snapshot_instrument_filter = SnapshotInstrumentFilter(
+                    self.on_snapshot_instruments_change
+                ).build()
+                self.snapshot_instrument_filter.container.set_visibility(
+                    self.settings.view_mode == "snapshot"
+                    and self.settings.instrument == "all"
+                )
                 self.records_per_page_select = (
                     ui.select(
                         options={
@@ -2479,6 +2559,7 @@ class AssetToolbar(UIElem):
         self.aggregation_days_input.set_enabled(interactive)
         self.partition_type_filter.button.set_enabled(interactive)
         self.data_level_filter.button.set_enabled(interactive)
+        self.snapshot_instrument_filter.button.set_enabled(interactive)
         self.records_per_page_select.set_enabled(interactive)
         self.start_select.set_enabled(not loading)
         self.end_select.set_enabled(not loading)
@@ -2790,6 +2871,7 @@ class AssetsStatusView(UIElem):
                 on_aggregation_days_change=self._on_aggregation_days_change,
                 on_partition_types_change=self._on_partition_types_change,
                 on_data_levels_change=self._on_data_levels_change,
+                on_snapshot_instruments_change=(self._on_snapshot_instruments_change),
                 on_records_per_page_change=self._on_records_per_page_change,
                 on_settings=self._open_settings,
                 on_export=self._open_export,
@@ -2935,6 +3017,7 @@ class AssetsStatusView(UIElem):
         previous_assets = tuple(self.assets)
         self.instrument = instrument
         self.snapshot_table.set_instrument(instrument)
+        self._apply_view_visibility()
         self._filter_assets_by_instrument()
         self._schedule_settings_save()
         if self.all_assets and tuple(self.assets) != previous_assets:
@@ -3163,6 +3246,9 @@ class AssetsStatusView(UIElem):
     def _on_data_levels_change(self, values: set[str]) -> None:
         self.snapshot_table.set_data_levels(values)
 
+    def _on_snapshot_instruments_change(self, values: set[str]) -> None:
+        self.snapshot_table.set_instruments(values)
+
     def _on_records_per_page_change(self, event: object) -> None:
         try:
             value = int(getattr(event, "value", self.settings.records_per_page))
@@ -3225,6 +3311,9 @@ class AssetsStatusView(UIElem):
         )
         self.toolbar.data_level_filter.container.set_visibility(
             self.view_mode == "snapshot"
+        )
+        self.toolbar.snapshot_instrument_filter.container.set_visibility(
+            self.view_mode == "snapshot" and self.instrument == "all"
         )
         self.drilldown_bar.set_visibility(
             self.view_mode == "all_rows" and self.table.summary_drilldown is not None
@@ -3322,11 +3411,25 @@ class AssetsStatusView(UIElem):
             if row["data_level"] is not None
         }
         self.toolbar.data_level_filter.set_available_levels(available_data_levels)
+        available_instruments = {
+            *ALL_INSTRUMENTS,
+            *(
+                row["instrument"]
+                for row in self.table.rows_in_timestamp_scope()
+                if row["instrument"] is not None
+            ),
+        }
+        self.toolbar.snapshot_instrument_filter.set_available_instruments(
+            available_instruments
+        )
         self.snapshot_table.set_partition_types(
             self.toolbar.partition_type_filter.selected_types
         )
         self.snapshot_table.set_data_levels(
             self.toolbar.data_level_filter.selected_levels
+        )
+        self.snapshot_table.set_instruments(
+            self.toolbar.snapshot_instrument_filter.selected_instruments
         )
         self.summary_table.set_source_rows(
             self._apply_snapshot_summary_filter(visible_rows)
