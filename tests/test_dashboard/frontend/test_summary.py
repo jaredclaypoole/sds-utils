@@ -1,8 +1,12 @@
-from unittest import TestCase
-from unittest.mock import MagicMock
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import AsyncMock, MagicMock
 
 from sds_utils.dashboard.backend.data import parse_asset_name
-from sds_utils.dashboard.frontend.elems import AssetsStatusSnapshotTable, SortRule
+from sds_utils.dashboard.frontend.elems import (
+    AssetsStatusSnapshotTable,
+    AssetsStatusView,
+    SortRule,
+)
 from sds_utils.dashboard.frontend.summary import (
     SUMMARY_DIMENSIONS,
     snapshot_status_rows,
@@ -388,3 +392,36 @@ class SummaryTests(TestCase):
 
         self.assertTrue(drilldown.matches(rows[0]))  # type: ignore[arg-type]
         self.assertFalse(drilldown.matches(rows[1]))  # type: ignore[arg-type]
+
+
+class SnapshotNavigationTests(IsolatedAsyncioTestCase):
+    async def test_instrument_header_selects_that_instrument(self) -> None:
+        view = object.__new__(AssetsStatusView)
+        view.instrument = "all"
+        view.snapshot_table = MagicMock(groups=["mag"])
+        view.toolbar = MagicMock()
+        view.set_instrument = AsyncMock()
+
+        await view._on_snapshot_group_click("mag")
+
+        self.assertEqual(view.toolbar.instrument_select.value, "mag")
+        view.set_instrument.assert_awaited_once_with("mag")
+
+    async def test_data_level_header_opens_filtered_summary(self) -> None:
+        view = object.__new__(AssetsStatusView)
+        view.instrument = "mag"
+        view.snapshot_table = MagicMock(groups=["l1a"])
+        view.toolbar = MagicMock()
+        view.snapshot_filter_chip = MagicMock()
+        view._update_summary = MagicMock()
+        view._apply_view_visibility = MagicMock()
+        view._schedule_settings_save = MagicMock()
+
+        await view._on_snapshot_group_click("l1a")
+
+        self.assertEqual(view.snapshot_summary_filter, ("mag", "l1a"))
+        self.assertEqual(view.snapshot_return_instrument, "mag")
+        self.assertEqual(view.view_mode, "summary")
+        self.assertEqual(view.toolbar.view_select.value, "summary")
+        view.snapshot_filter_chip.set_text.assert_called_once_with("mag / l1a")
+        view._update_summary.assert_called_once_with()

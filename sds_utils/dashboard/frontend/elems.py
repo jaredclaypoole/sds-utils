@@ -1254,9 +1254,15 @@ class AssetsStatusSnapshotTable(UIElem):
         "not-found": "text-blue-700",
     }
 
-    def __init__(self, instrument: str = "all") -> None:
+    def __init__(
+        self,
+        instrument: str = "all",
+        *,
+        on_group_click: Callable[[str], object] | None = None,
+    ) -> None:
         self.source_rows: list[AssetStatusRow] = []
         self.instrument = instrument
+        self.on_group_click = on_group_click or (lambda _group: None)
         self.groups: list[str] = list(ALL_INSTRUMENTS) if instrument == "all" else []
         self._installed_slots: set[str] = set()
         self.sorting_rules: list[SortRule] = []
@@ -1285,7 +1291,11 @@ class AssetsStatusSnapshotTable(UIElem):
         self.table.add_slot(
             "header-cell",
             """
-            <q-th :props="props">
+            <q-th
+              :props="props"
+              :class="!['first_date', 'last_date'].includes(props.col.name) ? 'cursor-pointer text-primary' : ''"
+              @click="!['first_date', 'last_date'].includes(props.col.name) && $parent.$emit('snapshot-group-click', props.col.name)"
+            >
               <div class="row items-center no-wrap q-gutter-xs">
                 <span>{{ props.col.label }}</span>
                 <q-icon
@@ -1298,7 +1308,11 @@ class AssetsStatusSnapshotTable(UIElem):
             </q-th>
             """,
         )
+        self.table.on("snapshot-group-click", self._on_group_click)
         self._install_group_slots()
+
+    def _on_group_click(self, event: GenericEventArguments) -> object:
+        return self.on_group_click(str(event.args))
 
     def _install_group_slots(self) -> None:
         for group in self.groups:
@@ -2323,6 +2337,8 @@ class AssetsStatusView(UIElem):
         self._dependency_graph_generation = 0
         self._load_task: asyncio.Task[Any] | None = None
         self._load_generation = 0
+        self.snapshot_summary_filter: tuple[str, str] | None = None
+        self.snapshot_return_instrument: str | None = None
         combined_columns = cast(
             list[dict[str, object]],
             AssetsStatusTable.COLUMNS + AssetsStatusSummaryTable.COLUMNS,
@@ -2397,6 +2413,18 @@ class AssetsStatusView(UIElem):
                     on_value_change=self._on_drilldown_chip_change,
                 ).props("outline")
             self.drilldown_bar.set_visibility(False)
+            with ui.row().classes("w-full items-center") as self.snapshot_filter_bar:
+                ui.button(
+                    icon="arrow_back",
+                    on_click=self._back_to_snapshot,
+                ).props("flat round dense").tooltip("Back to instrument snapshot")
+                self.snapshot_filter_chip = ui.chip(
+                    "Snapshot filter",
+                    icon="filter_alt",
+                    removable=True,
+                    on_value_change=self._on_snapshot_filter_chip_change,
+                ).props("outline")
+            self.snapshot_filter_bar.set_visibility(False)
             self.table = AssetsStatusTable(
                 on_metadata_change=self._on_metadata_change,
                 on_settings_change=self._on_table_settings_change,
@@ -2420,7 +2448,10 @@ class AssetsStatusView(UIElem):
             self.table.set_sorting(self.sorting_rules)
             self.summary_table.set_sorting(self.sorting_rules)
             self.summary_table.set_shared_filters(self.table.column_filters)
-            self.snapshot_table = AssetsStatusSnapshotTable(self.instrument).build()
+            self.snapshot_table = AssetsStatusSnapshotTable(
+                self.instrument,
+                on_group_click=self._on_snapshot_group_click,
+            ).build()
             self.snapshot_table.restore_settings(self.settings)
             self.snapshot_table.set_sorting(self.sorting_rules)
             self.dependency_graph_view = DependencyGraphView().build()
@@ -2495,6 +2526,8 @@ class AssetsStatusView(UIElem):
 
     async def set_instrument(self, instrument: str) -> None:
         """Select an instrument and reload only its matching assets."""
+        if self.snapshot_summary_filter is not None and instrument != self.instrument:
+            self._clear_snapshot_summary_filter()
         previous_assets = tuple(self.assets)
         self.instrument = instrument
         self.snapshot_table.set_instrument(instrument)
@@ -2607,6 +2640,8 @@ class AssetsStatusView(UIElem):
         previous_assets = tuple(self.assets)
         if value == "summary":
             self._clear_summary_drilldown()
+        else:
+            self._clear_snapshot_summary_filter()
         self.view_mode = value
         self._filter_assets_by_instrument()
         self._apply_view_visibility()
@@ -2615,6 +2650,45 @@ class AssetsStatusView(UIElem):
             await self._load_dependency_graph()
         if tuple(self.assets) != previous_assets:
             await self._load_all_assets()
+
+    async def _on_snapshot_group_click(self, group: str) -> None:
+        if group not in self.snapshot_table.groups:
+            return
+        if self.instrument == "all":
+            self.toolbar.instrument_select.value = group
+            await self.set_instrument(group)
+            return
+        self.snapshot_summary_filter = (self.instrument, group)
+        self.snapshot_return_instrument = self.instrument
+        self.snapshot_filter_chip.set_text(f"{self.instrument} / {group}")
+        self.snapshot_filter_chip.set_value(True)
+        self.view_mode = "summary"
+        self.toolbar.view_select.value = "summary"
+        self._update_summary()
+        self._apply_view_visibility()
+        self._schedule_settings_save()
+
+    def _on_snapshot_filter_chip_change(self, event: object) -> None:
+        if getattr(event, "value", True) is False:
+            self._clear_snapshot_summary_filter()
+
+    def _clear_snapshot_summary_filter(self) -> None:
+        if self.snapshot_summary_filter is None:
+            return
+        self.snapshot_summary_filter = None
+        self.snapshot_filter_bar.set_visibility(False)
+        self._update_summary()
+
+    async def _back_to_snapshot(self) -> None:
+        instrument = self.snapshot_return_instrument or self.instrument
+        self._clear_snapshot_summary_filter()
+        self.snapshot_return_instrument = None
+        self.view_mode = "snapshot"
+        self.toolbar.view_select.value = "snapshot"
+        self.toolbar.instrument_select.value = instrument
+        await self.set_instrument(instrument)
+        self._apply_view_visibility()
+        self._schedule_settings_save()
 
     def _on_summary_drilldown(self, row: SummaryRow) -> None:
         drilldown = summary_drilldown(
@@ -2719,6 +2793,9 @@ class AssetsStatusView(UIElem):
         self.drilldown_bar.set_visibility(
             self.view_mode == "all_rows" and self.table.summary_drilldown is not None
         )
+        self.snapshot_filter_bar.set_visibility(
+            self.view_mode == "summary" and self.snapshot_summary_filter is not None
+        )
         show_graph = self.view_mode == "dependency_graph"
         self.toolbar.dependency_graph_instrument_select.set_visibility(show_graph)
         self.dependency_graph_view.container.set_visibility(show_graph)
@@ -2784,14 +2861,34 @@ class AssetsStatusView(UIElem):
         self.table.clear_column_filter(column)
 
     def _update_summary(self) -> None:
+        timestamp_rows = self._apply_snapshot_summary_filter(
+            self.table.rows_in_timestamp_scope()
+        )
+        column_filter_rows = self._apply_snapshot_summary_filter(
+            self.table.rows_allowed_by_column_filters()
+        )
         self.summary.update(
-            self.table.rows_in_timestamp_scope(),
-            self.table.rows_allowed_by_column_filters(),
+            timestamp_rows,
+            column_filter_rows,
         )
         self.summary_table.set_shared_filters(self.table.column_filters)
         visible_rows = self.table.visible_rows()
-        self.summary_table.set_source_rows(visible_rows)
+        self.summary_table.set_source_rows(
+            self._apply_snapshot_summary_filter(visible_rows)
+        )
         self.snapshot_table.set_source_rows(visible_rows)
+
+    def _apply_snapshot_summary_filter(
+        self, rows: list[AssetStatusRow]
+    ) -> list[AssetStatusRow]:
+        if self.snapshot_summary_filter is None:
+            return rows
+        instrument, data_level = self.snapshot_summary_filter
+        return [
+            row
+            for row in rows
+            if row["instrument"] == instrument and row["data_level"] == data_level
+        ]
 
     def _schedule_settings_save(self) -> None:
         ui.timer(0, self._save_settings, once=True)
