@@ -7,10 +7,24 @@ from sds_utils.dashboard.backend.partition_time import (
     is_stale_partition,
     partition_overlaps_window,
     partition_timestamp_range,
+    partition_type,
 )
 
 
 class PartitionTimestampRangeTests(TestCase):
+    def test_extracts_partition_types(self) -> None:
+        self.assertEqual(
+            partition_type(
+                "repoint251_2026-05-17T10:03:12_to_2026-05-18T10:03:11"
+            ),
+            "repoint",
+        )
+        self.assertEqual(
+            partition_type("idex10day_2026-05-17T00:00:00_to_2026-05-27T00:00:00"),
+            "idex10day",
+        )
+        self.assertEqual(partition_type(""), "unpartitioned")
+
     WINDOW_START = datetime(2026, 5, 17, tzinfo=UTC)
     WINDOW_END = datetime(2026, 5, 19, tzinfo=UTC)
 

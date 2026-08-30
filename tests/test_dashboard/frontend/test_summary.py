@@ -114,6 +114,37 @@ class SummaryTests(TestCase):
         self.assertEqual(directions["first_date"], "desc")
         self.assertEqual(directions["last_date"], "asc")
 
+    def test_snapshot_filters_selected_partition_types(self) -> None:
+        table = AssetsStatusSnapshotTable("mag")
+        table.source_rows = [
+            {
+                "asset": "mag_l1a_first",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "daily_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            },
+            {
+                "asset": "mag_l1a_second",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "repoint42_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            },
+            {
+                "asset": "mag_l1a_third",
+                "status": "skipped",
+                "missing_file": "",
+                "partition": "idex10day_2026-01-01T00:00:00Z_to_2026-01-11T00:00:00Z",
+            },
+        ]
+        table.table = MagicMock()
+
+        table.set_partition_types({"daily", "idex10day"})
+
+        status_parts = table.table.rows[0]["l1a"]
+        self.assertEqual(status_parts[0]["text"], "1")
+        self.assertEqual(status_parts[2]["text"], "0")
+        self.assertEqual(status_parts[3]["text"], "1")
+
     def test_snapshot_groups_each_instrument_into_the_same_date_rows(self) -> None:
         rows = [
             {

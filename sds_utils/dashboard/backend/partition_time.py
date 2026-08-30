@@ -22,6 +22,19 @@ _TIMESTAMP_RANGE_SUFFIX = re.compile(
 )
 
 
+def partition_type(partition: str) -> str:
+    """Return the stable type prefix from a timestamp-ranged partition name."""
+    if not partition:
+        return "unpartitioned"
+    match = _TIMESTAMP_RANGE_SUFFIX.search(partition)
+    prefix = partition[: match.start()] if match is not None else partition
+    if re.fullmatch(r"repoint\d*", prefix, flags=re.IGNORECASE):
+        return "repoint"
+    if re.fullmatch(r"(?:daily|day)\d*", prefix, flags=re.IGNORECASE):
+        return "daily"
+    return prefix
+
+
 def partition_timestamp_range(partition: str) -> tuple[datetime, datetime] | None:
     """Parse a trailing ``_<timestamp>_to_<timestamp>`` partition range."""
     match = _TIMESTAMP_RANGE_SUFFIX.search(partition)

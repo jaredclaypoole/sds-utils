@@ -34,6 +34,7 @@ from ..backend.dependency_graph import (
 from ..backend.partition_time import (
     TimestampFiltering,
     include_partition,
+    partition_type,
 )
 from .asset_cache import CachedDagsterAssetsDataSource
 from .exporting import csv_table, plain_text_table
@@ -1266,6 +1267,7 @@ class AssetsStatusSnapshotTable(UIElem):
         self.groups: list[str] = list(ALL_INSTRUMENTS) if instrument == "all" else []
         self._installed_slots: set[str] = set()
         self.sorting_rules: list[SortRule] = []
+        self.selected_partition_types: set[str] | None = None
         self.date_aggregation: SummaryDateAggregation = "all"
         self.aggregation_days = MIN_AGGREGATION_DAYS
         self.columns = self._columns()
@@ -1342,6 +1344,10 @@ class AssetsStatusSnapshotTable(UIElem):
         self.source_rows = rows
         self._apply()
 
+    def set_partition_types(self, values: set[str]) -> None:
+        self.selected_partition_types = set(values)
+        self._apply()
+
     def set_instrument(self, instrument: str) -> None:
         self.instrument = instrument
         self._apply()
@@ -1376,6 +1382,15 @@ class AssetsStatusSnapshotTable(UIElem):
             self._apply()
 
     def _apply(self) -> None:
+        source_rows = (
+            self.source_rows
+            if self.selected_partition_types is None
+            else [
+                row
+                for row in self.source_rows
+                if partition_type(row["partition"]) in self.selected_partition_types
+            ]
+        )
         if self.instrument == "all":
             groups = list(ALL_INSTRUMENTS)
             group_by = "instrument"
@@ -1383,7 +1398,7 @@ class AssetsStatusSnapshotTable(UIElem):
             groups = sorted(
                 {
                     data_level
-                    for row in self.source_rows
+                    for row in source_rows
                     if (parsed := parse_asset_name(row["asset"]))[0] == self.instrument
                     and (data_level := parsed[1]) is not None
                 }
@@ -1395,7 +1410,7 @@ class AssetsStatusSnapshotTable(UIElem):
             self._refresh_column_metadata()
             self._install_group_slots()
         snapshot_rows = snapshot_status_rows(
-            self.source_rows,
+            source_rows,
             self.groups,
             self.date_aggregation,
             self.aggregation_days,
@@ -1866,6 +1881,138 @@ class ExportDialog(UIElem):
         self.on_download(self._current())
 
 
+class SnapshotPartitionTypeFilter(UIElem):
+    """Staged hierarchical partition-type selector for snapshot rows."""
+
+    def __init__(self, on_apply: Callable[[set[str]], object]) -> None:
+        self.on_apply = on_apply
+        self.available_types: set[str] = {"daily", "repoint"}
+        self.selected_types: set[str] = set(self.available_types)
+        self.pending_types: set[str] = set(self.selected_types)
+        self._updating = False
+        self.other_checkboxes: dict[str, Any] = {}
+
+    def render(self) -> None:
+        with ui.element("div") as self.container:
+            self.button = (
+                ui.button(
+                    "Partition types: All",
+                    icon="arrow_drop_down",
+                    on_click=self._open,
+                )
+                .props("outline no-caps align=left")
+                .classes("w-56")
+            )
+            with ui.menu() as self.menu:
+                with ui.column().classes("p-3 gap-1 min-w-64"):
+                    self.daily_checkbox = ui.checkbox(
+                        "Daily", on_change=self._daily_changed
+                    )
+                    self.repoint_checkbox = ui.checkbox(
+                        "Repoint", on_change=self._repoint_changed
+                    )
+                    self.other_checkbox = ui.checkbox(
+                        "Other", on_change=self._other_changed
+                    ).props("indeterminate-icon=remove")
+                    with ui.column().classes("pl-7 gap-0") as self.other_container:
+                        pass
+                    with ui.row().classes("w-full justify-end pt-2"):
+                        ui.button("Apply", on_click=self._apply).props(
+                            "unelevated no-caps"
+                        )
+        self._rebuild_other_checkboxes()
+
+    def set_available_types(self, values: set[str]) -> None:
+        available = {"daily", "repoint", *values}
+        newly_available = available - self.available_types
+        self.available_types = available
+        self.selected_types = (self.selected_types & available) | newly_available
+        self.pending_types = set(self.selected_types)
+        self._rebuild_other_checkboxes()
+        self._update_button_label()
+
+    def _other_types(self) -> list[str]:
+        return sorted(self.available_types - {"daily", "repoint"})
+
+    def _rebuild_other_checkboxes(self) -> None:
+        self.other_container.clear()
+        self.other_checkboxes = {}
+        with self.other_container:
+            for value in self._other_types():
+                self.other_checkboxes[value] = ui.checkbox(
+                    value,
+                    on_change=lambda event, partition=value: self._child_changed(
+                        partition, event
+                    ),
+                )
+        self._sync_checkboxes()
+
+    def _open(self) -> None:
+        self.pending_types = set(self.selected_types)
+        self._sync_checkboxes()
+        self.menu.open()
+
+    def _daily_changed(self, event: object) -> None:
+        self._set_pending("daily", bool(getattr(event, "value", False)))
+
+    def _repoint_changed(self, event: object) -> None:
+        self._set_pending("repoint", bool(getattr(event, "value", False)))
+
+    def _other_changed(self, event: object) -> None:
+        if self._updating:
+            return
+        checked = bool(getattr(event, "value", False))
+        if checked:
+            self.pending_types.update(self._other_types())
+        else:
+            self.pending_types.difference_update(self._other_types())
+        self._sync_checkboxes()
+
+    def _child_changed(self, partition: str, event: object) -> None:
+        self._set_pending(partition, bool(getattr(event, "value", False)))
+
+    def _set_pending(self, partition: str, checked: bool) -> None:
+        if self._updating:
+            return
+        if checked:
+            self.pending_types.add(partition)
+        else:
+            self.pending_types.discard(partition)
+        self._sync_checkboxes()
+
+    def _sync_checkboxes(self) -> None:
+        self._updating = True
+        try:
+            self.daily_checkbox.set_value("daily" in self.pending_types)
+            self.repoint_checkbox.set_value("repoint" in self.pending_types)
+            for value, checkbox in self.other_checkboxes.items():
+                checkbox.set_value(value in self.pending_types)
+            other_types = set(self._other_types())
+            selected_other = other_types & self.pending_types
+            other_value: bool | None = (
+                True
+                if other_types and selected_other == other_types
+                else None
+                if selected_other
+                else False
+            )
+            cast(Any, self.other_checkbox).set_value(other_value)
+        finally:
+            self._updating = False
+
+    def _apply(self) -> None:
+        self.selected_types = set(self.pending_types)
+        self._update_button_label()
+        self.menu.close()
+        self.on_apply(set(self.selected_types))
+
+    def _update_button_label(self) -> None:
+        selected = len(self.selected_types)
+        total = len(self.available_types)
+        label = "All" if selected == total else f"{selected} of {total}"
+        self.button.set_text(f"Partition types: {label}")
+
+
 class AssetToolbar(UIElem):
     def __init__(
         self,
@@ -1879,6 +2026,7 @@ class AssetToolbar(UIElem):
         on_dependency_graph_instrument_change: Callable[..., object],
         on_date_aggregation_change: Callable[..., object],
         on_aggregation_days_change: Callable[..., object],
+        on_partition_types_change: Callable[[set[str]], object],
         on_settings: Callable[..., object],
         on_export: Callable[..., object],
         on_refresh: Callable[..., object],
@@ -1896,6 +2044,7 @@ class AssetToolbar(UIElem):
         )
         self.on_date_aggregation_change = on_date_aggregation_change
         self.on_aggregation_days_change = on_aggregation_days_change
+        self.on_partition_types_change = on_partition_types_change
         self.on_settings = on_settings
         self.on_export = on_export
         self.on_refresh = on_refresh
@@ -1912,6 +2061,7 @@ class AssetToolbar(UIElem):
         self.settings_button: Button
         self.export_button: Button
         self.cancel_load_button: Button
+        self.partition_type_filter: SnapshotPartitionTypeFilter
 
     def render(self) -> None:
         with ui.column().classes("w-full gap-3"):
@@ -2051,6 +2201,12 @@ class AssetToolbar(UIElem):
                     self.settings.view_mode in {"summary", "snapshot"}
                     and self.settings.summary_date_aggregation == "days"
                 )
+                self.partition_type_filter = SnapshotPartitionTypeFilter(
+                    self.on_partition_types_change
+                ).build()
+                self.partition_type_filter.container.set_visibility(
+                    self.settings.view_mode == "snapshot"
+                )
                 self.unpartitioned_asset_select = (
                     ui.select(
                         options={"hide": "Hide", "show": "Show"},
@@ -2080,6 +2236,7 @@ class AssetToolbar(UIElem):
         self.dependency_graph_instrument_select.set_enabled(interactive)
         self.date_aggregation_select.set_enabled(interactive)
         self.aggregation_days_input.set_enabled(interactive)
+        self.partition_type_filter.button.set_enabled(interactive)
         self.start_select.set_enabled(not loading)
         self.end_select.set_enabled(not loading)
         self.timestamp_filtering_select.set_enabled(not loading)
@@ -2388,6 +2545,7 @@ class AssetsStatusView(UIElem):
                 ),
                 on_date_aggregation_change=self._on_date_aggregation_change,
                 on_aggregation_days_change=self._on_aggregation_days_change,
+                on_partition_types_change=self._on_partition_types_change,
                 on_settings=self._open_settings,
                 on_export=self._open_export,
                 on_refresh=self._refresh,
@@ -2753,6 +2911,9 @@ class AssetsStatusView(UIElem):
         self.summary_table.set_aggregation_days(value)
         self.snapshot_table.set_aggregation_days(value)
 
+    def _on_partition_types_change(self, values: set[str]) -> None:
+        self.snapshot_table.set_partition_types(values)
+
     async def _load_dependency_graph(self) -> None:
         instrument = self.dependency_graph_instrument
         self._dependency_graph_generation += 1
@@ -2789,6 +2950,9 @@ class AssetsStatusView(UIElem):
         self.toolbar.date_aggregation_select.set_visibility(show_date_aggregation)
         self.toolbar.aggregation_days_input.set_visibility(
             show_date_aggregation and self.summary_table.date_aggregation == "days"
+        )
+        self.toolbar.partition_type_filter.container.set_visibility(
+            self.view_mode == "snapshot"
         )
         self.drilldown_bar.set_visibility(
             self.view_mode == "all_rows" and self.table.summary_drilldown is not None
@@ -2873,6 +3037,16 @@ class AssetsStatusView(UIElem):
         )
         self.summary_table.set_shared_filters(self.table.column_filters)
         visible_rows = self.table.visible_rows()
+        available_partition_types = {
+            partition_type(row["partition"])
+            for row in self.table.rows_in_timestamp_scope()
+        }
+        self.toolbar.partition_type_filter.set_available_types(
+            available_partition_types
+        )
+        self.snapshot_table.set_partition_types(
+            self.toolbar.partition_type_filter.selected_types
+        )
         self.summary_table.set_source_rows(
             self._apply_snapshot_summary_filter(visible_rows)
         )
