@@ -129,6 +129,9 @@ class _ActivityRow:
 class DagsterAssetsDataSource:
     """Load asset information through the generated synchronous client."""
 
+    def __init__(self, identity_source: str | None = None) -> None:
+        self.identity_source = identity_source
+
     def list_assets(self) -> list[AssetOption]:
         """List and normalize all Dagster asset definitions."""
         started = perf_counter()
@@ -243,7 +246,7 @@ class DagsterAssetsDataSource:
         total_started = perf_counter()
         since = start.timestamp()
         until = end.timestamp()
-        dagster_source = graphql_url()
+        dagster_source = self.identity_source or graphql_url()
         asset_paths = frozenset(asset.path for asset in assets)
         latest: dict[tuple[tuple[str, ...], str], _ActivityRow] = {}
         run_pages = 0

@@ -30,6 +30,7 @@ from ..backend.partition_time import (
     TimestampFiltering,
     include_partition,
 )
+from .asset_cache import CachedDagsterAssetsDataSource
 from .exporting import csv_table, plain_text_table
 from .filtering import (
     is_valid_regex,
@@ -2092,12 +2093,14 @@ class DependencyGraphView(UIElem):
 class AssetsStatusView(UIElem):
     def __init__(
         self,
-        data_source: DagsterAssetsDataSource | None = None,
+        data_source: DagsterAssetsDataSource
+        | CachedDagsterAssetsDataSource
+        | None = None,
         metadata_store: AttemptMetadataStore | None = None,
         settings_store: AppSettingsStore | None = None,
         dependency_graph_loader: Callable[[str], DependencyGraph] | None = None,
     ) -> None:
-        self.data_source = data_source or DagsterAssetsDataSource()
+        self.data_source = data_source or CachedDagsterAssetsDataSource()
         self.metadata_store = metadata_store or AttemptMetadataStore()
         self.settings_store = settings_store or AppSettingsStore()
         self.dependency_graph_loader: Callable[[str], DependencyGraph] = (
@@ -2743,12 +2746,27 @@ class AssetsStatusView(UIElem):
                 ValueError("start timestamp must be before end timestamp"),
             )
             return
-        self.table.set_rows([])
-        self._update_summary()
+        include_recent_activity = (
+            self.timestamp_filtering is not TimestampFiltering.PARTITION_ONLY
+        )
+        include_partition_ranges = (
+            self.timestamp_filtering is not TimestampFiltering.ACTIVE_ONLY
+        )
         self.table.set_activity_window(window_start, window_end)
+        cached_rows = await self._load_cached_rows(
+            window_start,
+            window_end,
+            include_recent_activity=include_recent_activity,
+            include_partition_ranges=include_partition_ranges,
+        )
+        self._show_cached_rows(cached_rows)
         self._set_loading(
             True,
-            "Loading all assets for the selected date range…",
+            (
+                "Checking Dagster for updates…"
+                if cached_rows is not None
+                else "Loading all assets for the selected date range…"
+            ),
         )
         try:
             data_started = perf_counter()
@@ -2756,12 +2774,8 @@ class AssetsStatusView(UIElem):
                 self.data_source.load_recent_status_rows,
                 start=window_start,
                 end=window_end,
-                include_recent_activity=(
-                    self.timestamp_filtering is not TimestampFiltering.PARTITION_ONLY
-                ),
-                include_partition_ranges=(
-                    self.timestamp_filtering is not TimestampFiltering.ACTIVE_ONLY
-                ),
+                include_recent_activity=include_recent_activity,
+                include_partition_ranges=include_partition_ranges,
                 assets=tuple(self.assets),
             )
             if rows is None:
@@ -2814,6 +2828,33 @@ class AssetsStatusView(UIElem):
             if load_generation == self._load_generation:
                 self.toolbar.set_loading(False)
                 self._load_task = None
+
+    async def _load_cached_rows(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        include_recent_activity: bool,
+        include_partition_ranges: bool,
+    ) -> list[AssetStatusRow] | None:
+        if not isinstance(self.data_source, CachedDagsterAssetsDataSource):
+            return None
+        return await run.io_bound(
+            self.data_source.load_cached_status_rows,
+            start=start,
+            end=end,
+            include_recent_activity=include_recent_activity,
+            include_partition_ranges=include_partition_ranges,
+            assets=tuple(self.assets),
+        )
+
+    def _show_cached_rows(self, rows: list[AssetStatusRow] | None) -> None:
+        self.table.set_rows(rows or [])
+        self._update_summary()
+        if rows is not None:
+            self.loading_label.set_text(
+                f"{len(rows):,} cached partitions loaded · checking for updates…"
+            )
 
     def _cancel_load(self) -> None:
         self._load_generation += 1

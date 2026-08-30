@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 from pydantic import Field as PydanticField
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 FilterMode = Literal["pattern", "regex", "one_of", "empty", "not_empty"]
@@ -250,3 +250,67 @@ class AttemptMetadata(SQLModel, table=True):
     def parse_tags_str(cls, tags_str: str) -> list[str]:
         """Parse the dashboard text control value into individual tags."""
         return [tag.strip() for tag in tags_str.split(";") if tag.strip()]
+
+
+class DagsterCacheNamespace(SQLModel, table=True):
+    """Stable cache identity with mutable Dagster endpoint metadata."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)
+    current_graphql_url: str
+    previous_graphql_urls: list[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
+    activity_watermark: datetime | None = None
+    definitions_refreshed_at: datetime | None = None
+    last_full_reconciliation_at: datetime | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class CachedAssetDefinition(SQLModel, table=True):
+    """Cached Dagster asset definition and its partition keys."""
+
+    __table_args__ = (UniqueConstraint("namespace_id", "asset_key"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    namespace_id: int = Field(foreign_key="dagstercachenamespace.id", index=True)
+    asset_key: str = Field(index=True)
+    payload: dict[str, object] = Field(sa_column=Column(JSON, nullable=False))
+
+
+class CachedPartitionStatus(SQLModel, table=True):
+    """Latest known status for an asset-partition pair."""
+
+    __table_args__ = (UniqueConstraint("namespace_id", "row_id"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    namespace_id: int = Field(foreign_key="dagstercachenamespace.id", index=True)
+    row_id: str = Field(index=True)
+    update_time: datetime | None = Field(default=None, index=True)
+    payload: dict[str, object] = Field(sa_column=Column(JSON, nullable=False))
+
+
+class CachedAssetActivity(SQLModel, table=True):
+    """One cached status revision used for activity-window queries."""
+
+    __table_args__ = (UniqueConstraint("namespace_id", "activity_key"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    namespace_id: int = Field(foreign_key="dagstercachenamespace.id", index=True)
+    activity_key: str = Field(index=True)
+    row_id: str = Field(index=True)
+    update_time: datetime = Field(index=True)
+    payload: dict[str, object] = Field(sa_column=Column(JSON, nullable=False))
+
+
+class DagsterCacheCoverage(SQLModel, table=True):
+    """Successfully populated cache interval for one query shape."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    namespace_id: int = Field(foreign_key="dagstercachenamespace.id", index=True)
+    start: datetime = Field(index=True)
+    end: datetime = Field(index=True)
+    includes_activity: bool
+    includes_partitions: bool
