@@ -2,7 +2,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock
 
 from sds_utils.dashboard.backend.data import parse_asset_name
-from sds_utils.dashboard.frontend.elems import AssetsStatusSnapshotTable
+from sds_utils.dashboard.frontend.elems import AssetsStatusSnapshotTable, SortRule
 from sds_utils.dashboard.frontend.summary import (
     SUMMARY_DIMENSIONS,
     snapshot_status_rows,
@@ -80,6 +80,35 @@ class SummaryTests(TestCase):
         )
         self.assertEqual(table.table.rows[0]["l1a"][0]["text"], "1")
         self.assertEqual(table.table.rows[0]["l2"][2]["text"], "1")
+
+    def test_snapshot_respects_and_displays_date_sort_directions(self) -> None:
+        table = AssetsStatusSnapshotTable("mag")
+        table.source_rows = [
+            {
+                "asset": "mag_l1a_first",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": f"x_2026-01-{day:02d}T00:00:00Z_to_2026-01-{day + 1:02d}T00:00:00Z",
+            }
+            for day in (1, 2)
+        ]
+        table.date_aggregation = "day"
+        table.table = MagicMock()
+
+        table.set_sorting(
+            [SortRule("first_date", descending=True), SortRule("last_date")]
+        )
+
+        self.assertEqual(
+            [row["first_date"] for row in table.table.rows],
+            ["2026-01-02", "2026-01-01"],
+        )
+        directions = {
+            column["name"]: column["sort_direction"]
+            for column in table.table.columns
+        }
+        self.assertEqual(directions["first_date"], "desc")
+        self.assertEqual(directions["last_date"], "asc")
 
     def test_snapshot_groups_each_instrument_into_the_same_date_rows(self) -> None:
         rows = [

@@ -1259,6 +1259,7 @@ class AssetsStatusSnapshotTable(UIElem):
         self.instrument = instrument
         self.groups: list[str] = list(ALL_INSTRUMENTS) if instrument == "all" else []
         self._installed_slots: set[str] = set()
+        self.sorting_rules: list[SortRule] = []
         self.date_aggregation: SummaryDateAggregation = "all"
         self.aggregation_days = MIN_AGGREGATION_DAYS
         self.columns = self._columns()
@@ -1281,6 +1282,22 @@ class AssetsStatusSnapshotTable(UIElem):
             pagination={"rowsPerPage": 25},
         ).classes("w-full shadow-none border rounded-lg")
         self.table.props("flat bordered separator=cell")
+        self.table.add_slot(
+            "header-cell",
+            """
+            <q-th :props="props">
+              <div class="row items-center no-wrap q-gutter-xs">
+                <span>{{ props.col.label }}</span>
+                <q-icon
+                  v-if="props.col.sort_direction"
+                  :name="props.col.sort_direction === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+                  color="primary"
+                  size="xs"
+                />
+              </div>
+            </q-th>
+            """,
+        )
         self._install_group_slots()
 
     def _install_group_slots(self) -> None:
@@ -1315,6 +1332,24 @@ class AssetsStatusSnapshotTable(UIElem):
         self.instrument = instrument
         self._apply()
 
+    def set_sorting(self, rules: list[SortRule]) -> None:
+        self.sorting_rules = [
+            rule for rule in rules if rule.column in {"first_date", "last_date"}
+        ]
+        self._refresh_column_metadata()
+        self._apply()
+
+    def _refresh_column_metadata(self) -> None:
+        for column in self.columns:
+            rule = next(
+                (rule for rule in self.sorting_rules if rule.column == column["name"]),
+                None,
+            )
+            column["sort_direction"] = (
+                "desc" if rule and rule.descending else ("asc" if rule else "")
+            )
+        self.table.columns = self.columns
+
     def set_date_aggregation(self, value: SummaryDateAggregation) -> None:
         self.date_aggregation = value
         self._apply()
@@ -1343,7 +1378,7 @@ class AssetsStatusSnapshotTable(UIElem):
         if groups != self.groups:
             self.groups = groups
             self.columns = self._columns()
-            self.table.columns = self.columns
+            self._refresh_column_metadata()
             self._install_group_slots()
         snapshot_rows = snapshot_status_rows(
             self.source_rows,
@@ -1382,9 +1417,13 @@ class AssetsStatusSnapshotTable(UIElem):
                     for status in SUMMARY_STATUSES
                 ]
             rendered_rows.append(rendered)
-        self.table.rows = sorted(
-            rendered_rows,
-            key=lambda row: (str(row["first_date"]), str(row["last_date"])),
+        self.table.rows = (
+            _sorted_rows(rendered_rows, self.sorting_rules)
+            if self.sorting_rules
+            else sorted(
+                rendered_rows,
+                key=lambda row: (str(row["first_date"]), str(row["last_date"])),
+            )
         )
         self.table.update()
 
@@ -2383,6 +2422,7 @@ class AssetsStatusView(UIElem):
             self.summary_table.set_shared_filters(self.table.column_filters)
             self.snapshot_table = AssetsStatusSnapshotTable(self.instrument).build()
             self.snapshot_table.restore_settings(self.settings)
+            self.snapshot_table.set_sorting(self.sorting_rules)
             self.dependency_graph_view = DependencyGraphView().build()
             self._apply_view_visibility()
             self.start_dialog = DateTimePickerDialog(
@@ -2490,6 +2530,7 @@ class AssetsStatusView(UIElem):
         self.sorting_rules = sorting_rules
         self.table.set_sorting(sorting_rules)
         self.summary_table.set_sorting(sorting_rules)
+        self.snapshot_table.set_sorting(sorting_rules)
         self._schedule_settings_save()
 
     def _open_export(self) -> None:
