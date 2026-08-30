@@ -19,7 +19,12 @@ from nicegui.elements.table import Table
 from nicegui.events import GenericEventArguments
 from pydantic import ValidationError
 
-from ..backend.data import AssetOption, AssetStatusRow, DagsterAssetsDataSource
+from ..backend.data import (
+    AssetOption,
+    AssetStatusRow,
+    DagsterAssetsDataSource,
+    parse_asset_name,
+)
 from ..backend.dependency_graph import (
     DEPENDENCY_GRAPH_INSTRUMENTS,
     DependencyGraph,
@@ -1238,7 +1243,7 @@ class AssetsStatusSummaryTable(UIElem):
 
 
 class AssetsStatusSnapshotTable(UIElem):
-    """Date-bucketed status counts with one compact column per instrument."""
+    """Date-bucketed status counts with one compact column per selected group."""
 
     STATUS_COLORS = {
         "materialized": "text-green-700",
@@ -1249,19 +1254,24 @@ class AssetsStatusSnapshotTable(UIElem):
         "not-found": "text-blue-700",
     }
 
-    def __init__(self) -> None:
+    def __init__(self, instrument: str = "all") -> None:
         self.source_rows: list[AssetStatusRow] = []
+        self.instrument = instrument
+        self.groups: list[str] = list(ALL_INSTRUMENTS) if instrument == "all" else []
+        self._installed_slots: set[str] = set()
         self.date_aggregation: SummaryDateAggregation = "all"
         self.aggregation_days = MIN_AGGREGATION_DAYS
+        self.columns = self._columns()
+
+    def _columns(self) -> list[dict[str, object]]:
         columns: list[dict[str, object]] = [
             {"name": "first_date", "label": "First date", "field": "first_date"},
             {"name": "last_date", "label": "Last date", "field": "last_date"},
         ]
         columns.extend(
-            {"name": instrument, "label": instrument, "field": instrument}
-            for instrument in ALL_INSTRUMENTS
+            {"name": group, "label": group, "field": group} for group in self.groups
         )
-        self.columns = _left_aligned_columns(columns)
+        return _left_aligned_columns(columns)
 
     def render(self) -> None:
         self.table = ui.table(
@@ -1271,9 +1281,14 @@ class AssetsStatusSnapshotTable(UIElem):
             pagination={"rowsPerPage": 25},
         ).classes("w-full shadow-none border rounded-lg")
         self.table.props("flat bordered separator=cell")
-        for instrument in ALL_INSTRUMENTS:
+        self._install_group_slots()
+
+    def _install_group_slots(self) -> None:
+        for group in self.groups:
+            if group in self._installed_slots:
+                continue
             self.table.add_slot(
-                f"body-cell-{instrument}",
+                f"body-cell-{group}",
                 """
                 <q-td :props="props" class="font-mono whitespace-pre">
                   <template v-for="(part, index) in props.value" :key="index">
@@ -1285,6 +1300,7 @@ class AssetsStatusSnapshotTable(UIElem):
                 </q-td>
                 """,
             )
+            self._installed_slots.add(group)
 
     def restore_settings(self, settings: AppSettingsState) -> None:
         self.date_aggregation = settings.summary_date_aggregation
@@ -1293,6 +1309,10 @@ class AssetsStatusSnapshotTable(UIElem):
 
     def set_source_rows(self, rows: list[AssetStatusRow]) -> None:
         self.source_rows = rows
+        self._apply()
+
+    def set_instrument(self, instrument: str) -> None:
+        self.instrument = instrument
         self._apply()
 
     def set_date_aggregation(self, value: SummaryDateAggregation) -> None:
@@ -1307,18 +1327,37 @@ class AssetsStatusSnapshotTable(UIElem):
             self._apply()
 
     def _apply(self) -> None:
+        if self.instrument == "all":
+            groups = list(ALL_INSTRUMENTS)
+            group_by = "instrument"
+        else:
+            groups = sorted(
+                {
+                    data_level
+                    for row in self.source_rows
+                    if (parsed := parse_asset_name(row["asset"]))[0] == self.instrument
+                    and (data_level := parsed[1]) is not None
+                }
+            )
+            group_by = "data_level"
+        if groups != self.groups:
+            self.groups = groups
+            self.columns = self._columns()
+            self.table.columns = self.columns
+            self._install_group_slots()
         snapshot_rows = snapshot_status_rows(
             self.source_rows,
-            ALL_INSTRUMENTS,
+            self.groups,
             self.date_aggregation,
             self.aggregation_days,
+            group_by=group_by,
         )
         widths = {
-            (instrument, status): max(
-                (len(str(row["counts"][instrument][status])) for row in snapshot_rows),
+            (group, status): max(
+                (len(str(row["counts"][group][status])) for row in snapshot_rows),
                 default=1,
             )
-            for instrument in ALL_INSTRUMENTS
+            for group in self.groups
             for status in SUMMARY_STATUSES
         }
         rendered_rows: list[dict[str, object]] = []
@@ -1328,16 +1367,15 @@ class AssetsStatusSnapshotTable(UIElem):
                 "first_date": row["first_date"],
                 "last_date": row["last_date"],
             }
-            for instrument in ALL_INSTRUMENTS:
-                rendered[instrument] = [
+            for group in self.groups:
+                rendered[group] = [
                     {
-                        "text": str(row["counts"][instrument][status]).rjust(
-                            widths[(instrument, status)]
+                        "text": str(row["counts"][group][status]).rjust(
+                            widths[(group, status)]
                         ),
                         "color": (
                             "text-grey-3"
-                            if ZERO_COUNTS_GRAY
-                            and row["counts"][instrument][status] == 0
+                            if ZERO_COUNTS_GRAY and row["counts"][group][status] == 0
                             else self.STATUS_COLORS[status]
                         ),
                     }
@@ -2335,7 +2373,7 @@ class AssetsStatusView(UIElem):
             self.table.set_sorting(self.sorting_rules)
             self.summary_table.set_sorting(self.sorting_rules)
             self.summary_table.set_shared_filters(self.table.column_filters)
-            self.snapshot_table = AssetsStatusSnapshotTable().build()
+            self.snapshot_table = AssetsStatusSnapshotTable(self.instrument).build()
             self.snapshot_table.restore_settings(self.settings)
             self.dependency_graph_view = DependencyGraphView().build()
             self._apply_view_visibility()
@@ -2411,6 +2449,7 @@ class AssetsStatusView(UIElem):
         """Select an instrument and reload only its matching assets."""
         previous_assets = tuple(self.assets)
         self.instrument = instrument
+        self.snapshot_table.set_instrument(instrument)
         self._filter_assets_by_instrument()
         self._schedule_settings_save()
         if self.all_assets and tuple(self.assets) != previous_assets:
@@ -2424,7 +2463,7 @@ class AssetsStatusView(UIElem):
         self.assets = [
             asset
             for asset in self.all_assets
-            if self.view_mode == "snapshot"
+            if (self.view_mode == "snapshot" and self.instrument == "all")
             or self.instrument in {"all", asset.label}
             or asset.label.startswith(f"{self.instrument}_")
         ]

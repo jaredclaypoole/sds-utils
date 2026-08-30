@@ -13,7 +13,7 @@ from sds_utils.dashboard.frontend.summary import (
 
 class SummaryTests(TestCase):
     def test_snapshot_padding_uses_maximum_for_each_instrument_and_status(self) -> None:
-        table = object.__new__(AssetsStatusSnapshotTable)
+        table = AssetsStatusSnapshotTable()
         table.source_rows = [
             {
                 "asset": f"codice_l1a_first_{index}",
@@ -46,6 +46,40 @@ class SummaryTests(TestCase):
         self.assertEqual(codice_parts[0]["text"], "10")
         self.assertEqual(table.table.rows[1]["codice"][0]["text"], " 1")
         self.assertEqual(table.table.rows[1]["codice"][2]["text"], "1")
+
+    def test_snapshot_uses_data_level_columns_for_one_instrument(self) -> None:
+        table = AssetsStatusSnapshotTable("mag")
+        table.source_rows = [
+            {
+                "asset": "mag_l1a_first",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "x_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            },
+            {
+                "asset": "mag_l2_second",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "x_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            },
+            {
+                "asset": "codice_l3_ignored",
+                "status": "skipped",
+                "missing_file": "",
+                "partition": "x_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            },
+        ]
+        table.table = MagicMock()
+
+        table._apply()
+
+        self.assertEqual(table.groups, ["l1a", "l2"])
+        self.assertEqual(
+            [column["name"] for column in table.table.columns],
+            ["first_date", "last_date", "l1a", "l2"],
+        )
+        self.assertEqual(table.table.rows[0]["l1a"][0]["text"], "1")
+        self.assertEqual(table.table.rows[0]["l2"][2]["text"], "1")
 
     def test_snapshot_groups_each_instrument_into_the_same_date_rows(self) -> None:
         rows = [

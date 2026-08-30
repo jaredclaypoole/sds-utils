@@ -39,7 +39,7 @@ class SummaryRow(TypedDict):
 
 
 class SnapshotRow(TypedDict):
-    """Status counts for one date bucket, keyed further by instrument."""
+    """Status counts for one date bucket, keyed further by the selected grouping."""
 
     row_id: str
     first_date: str
@@ -217,27 +217,32 @@ def summarize_status_rows(
 
 def snapshot_status_rows(
     rows: Iterable[AssetStatusRow],
-    instruments: Iterable[str],
+    groups: Iterable[str],
     date_aggregation: SummaryDateAggregation = "all",
     aggregation_days: int = MIN_AGGREGATION_DAYS,
+    *,
+    group_by: str = "instrument",
 ) -> list[SnapshotRow]:
-    """Count each status by instrument and date bucket for the snapshot view."""
+    """Count each status by instrument or data level and date bucket."""
     if aggregation_days < MIN_AGGREGATION_DAYS:
         raise ValueError(f"aggregation_days must be at least {MIN_AGGREGATION_DAYS}")
-    instrument_names = tuple(instruments)
-    known_instruments = set(instrument_names)
+    if group_by not in {"instrument", "data_level"}:
+        raise ValueError(f"Unknown snapshot grouping: {group_by}")
+    group_names = tuple(groups)
+    known_groups = set(group_names)
     grouped: dict[date | None, dict[str, Counter[str]]] = {}
     start_dates: dict[date | None, list[date]] = {}
     for row in rows:
-        instrument, _data_level, _descriptor = parse_asset_name(row["asset"])
-        if instrument not in known_instruments:
+        instrument, data_level, _descriptor = parse_asset_name(row["asset"])
+        group = instrument if group_by == "instrument" else data_level
+        if group not in known_groups:
             continue
         timestamp_range = partition_timestamp_range(row.get("partition", ""))
         partition_date = timestamp_range[0].date() if timestamp_range else None
         bucket_start = _date_bucket_start(
             partition_date, date_aggregation, aggregation_days
         )
-        grouped.setdefault(bucket_start, {}).setdefault(instrument, Counter())[
+        grouped.setdefault(bucket_start, {}).setdefault(group, Counter())[
             row["status"]
         ] += 1
         if partition_date is not None:
@@ -265,11 +270,11 @@ def snapshot_status_rows(
                 "first_date": first_date,
                 "last_date": last_date,
                 "counts": {
-                    instrument: {
-                        status: instrument_counts.get(instrument, Counter())[status]
+                    group: {
+                        status: instrument_counts.get(group, Counter())[status]
                         for status in SUMMARY_STATUSES
                     }
-                    for instrument in instrument_names
+                    for group in group_names
                 },
             }
         )
