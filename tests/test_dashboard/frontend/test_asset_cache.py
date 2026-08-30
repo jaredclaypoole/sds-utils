@@ -234,3 +234,76 @@ class AssetStatusCacheTests(TestCase):
                 include_partitions=True,
             )
         )
+
+    @mock.patch(
+        "sds_utils.dashboard.frontend.asset_cache.graphql_url",
+        return_value="https://dagster.example/graphql",
+    )
+    @mock.patch(
+        "sds_utils.dashboard.frontend.asset_cache.dagster_ui_url",
+        return_value="https://dagster.example",
+    )
+    def test_facade_queries_only_partial_cache_gap(
+        self, _ui_url: mock.Mock, _graphql_url: mock.Mock
+    ) -> None:
+        cache = AssetStatusCache(self.engine, "production")
+        asset = AssetOption("mag", ("mag",), False, ())
+        cache.save_assets([asset])
+        source = mock.Mock()
+        source.load_recent_status_rows.return_value = []
+        cached_source = CachedDagsterAssetsDataSource(  # type: ignore[arg-type]
+            source=source,
+            cache=cache,
+        )
+        august_1 = datetime(2026, 8, 1, tzinfo=UTC)
+        august_2 = datetime(2026, 8, 2, tzinfo=UTC)
+        august_14 = datetime(2026, 8, 14, tzinfo=UTC)
+        august_15 = datetime(2026, 8, 15, tzinfo=UTC)
+        cached_source.load_recent_status_rows(
+            start=august_1,
+            end=august_14,
+            include_recent_activity=True,
+            include_partition_ranges=False,
+            assets=(asset,),
+        )
+
+        cached_source.load_recent_status_rows(
+            start=august_2,
+            end=august_15,
+            include_recent_activity=True,
+            include_partition_ranges=False,
+            assets=(asset,),
+        )
+
+        second_call = source.load_recent_status_rows.call_args_list[1]
+        self.assertEqual(second_call.kwargs["start"], august_14)
+        self.assertEqual(second_call.kwargs["end"], august_15)
+
+    @mock.patch(
+        "sds_utils.dashboard.frontend.asset_cache.graphql_url",
+        return_value="https://dagster.example/graphql",
+    )
+    def test_partial_coverage_returns_only_uncovered_interval(
+        self, _graphql_url: mock.Mock
+    ) -> None:
+        cache = AssetStatusCache(self.engine, "production")
+        august_1 = datetime(2026, 8, 1, tzinfo=UTC)
+        august_14 = datetime(2026, 8, 14, tzinfo=UTC)
+        august_15 = datetime(2026, 8, 15, tzinfo=UTC)
+        cache.save_result(
+            [],
+            start=august_1,
+            end=august_14,
+            include_activity=True,
+            include_partitions=True,
+            mark_coverage=True,
+        )
+
+        gaps = cache.missing_intervals(
+            datetime(2026, 8, 2, tzinfo=UTC),
+            august_15,
+            include_activity=True,
+            include_partitions=True,
+        )
+
+        self.assertEqual(gaps, [(august_14, august_15)])

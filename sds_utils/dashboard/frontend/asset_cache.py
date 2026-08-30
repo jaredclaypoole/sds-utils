@@ -113,20 +113,53 @@ class AssetStatusCache:
         include_activity: bool,
         include_partitions: bool,
     ) -> bool:
+        return not self.missing_intervals(
+            start,
+            end,
+            include_activity=include_activity,
+            include_partitions=include_partitions,
+        )
+
+    def missing_intervals(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        include_activity: bool,
+        include_partitions: bool,
+    ) -> list[tuple[datetime, datetime]]:
+        """Return gaps not covered by the union of compatible cache intervals."""
         with Session(self.engine) as session:
             namespace = self._namespace(session)
             coverage = session.exec(
                 select(DagsterCacheCoverage).where(
                     DagsterCacheCoverage.namespace_id == namespace.id,
-                    DagsterCacheCoverage.start <= start,
-                    DagsterCacheCoverage.end >= end,
+                    DagsterCacheCoverage.end >= start,
+                    DagsterCacheCoverage.start <= end,
                 )
             ).all()
-            return any(
-                (not include_activity or item.includes_activity)
-                and (not include_partitions or item.includes_partitions)
-                for item in coverage
+        intervals = sorted(
+            (
+                max(start, _as_utc(item.start) or start),
+                min(end, _as_utc(item.end) or end),
             )
+            for item in coverage
+            if (not include_activity or item.includes_activity)
+            and (not include_partitions or item.includes_partitions)
+        )
+        gaps: list[tuple[datetime, datetime]] = []
+        cursor = start
+        for covered_start, covered_end in intervals:
+            if covered_end <= cursor:
+                continue
+            if covered_start > cursor:
+                gaps.append((cursor, covered_start))
+            cursor = max(cursor, covered_end)
+            if cursor >= end:
+                break
+        if cursor < end:
+            gaps.append((cursor, end))
+        return gaps
 
     def save_result(  # noqa: PLR0913
         self,
@@ -137,6 +170,8 @@ class AssetStatusCache:
         include_activity: bool,
         include_partitions: bool,
         mark_coverage: bool,
+        mark_reconciliation: bool = False,
+        advance_watermark: bool = True,
     ) -> None:
         """Atomically upsert rows and advance successful synchronization state."""
         now = datetime.now(UTC)
@@ -205,11 +240,13 @@ class AssetStatusCache:
                         includes_partitions=include_partitions,
                     )
                 )
+            if mark_reconciliation:
                 namespace.last_full_reconciliation_at = now
-            watermark = _as_utc(namespace.activity_watermark)
-            safe_end = min(end, now) if include_activity else now
-            if watermark is None or safe_end > watermark:
-                namespace.activity_watermark = safe_end
+            if advance_watermark:
+                watermark = _as_utc(namespace.activity_watermark)
+                safe_end = min(end, now) if include_activity else now
+                if watermark is None or safe_end > watermark:
+                    namespace.activity_watermark = safe_end
             namespace.updated_at = now
             session.commit()
 
@@ -369,16 +406,17 @@ class CachedDagsterAssetsDataSource:
         with lock:
             cached_assets, _refreshed_at = self.cache.load_assets()
             sync_assets = tuple(cached_assets) or assets
-            covered = self.cache.covers(
+            missing_intervals = self.cache.missing_intervals(
                 start,
                 end,
                 include_activity=include_recent_activity,
                 include_partitions=include_partition_ranges,
             )
-            if not covered or self.cache.reconciliation_due():
+            reconciliation_due = self.cache.reconciliation_due()
+            if reconciliation_due:
                 logger.info(
-                    "Asset cache %s for namespace %r; running authoritative load",
-                    "miss" if not covered else "reconciliation due",
+                    "Asset cache reconciliation due for namespace %r; "
+                    "running authoritative load",
                     self.cache.namespace,
                 )
                 rows = self.source.load_recent_status_rows(
@@ -395,6 +433,7 @@ class CachedDagsterAssetsDataSource:
                     include_activity=include_recent_activity,
                     include_partitions=include_partition_ranges,
                     mark_coverage=True,
+                    mark_reconciliation=True,
                 )
                 return self.cache.project(
                     start=start,
@@ -403,6 +442,31 @@ class CachedDagsterAssetsDataSource:
                     include_partitions=include_partition_ranges,
                     assets=assets,
                 )
+
+            if missing_intervals:
+                logger.info(
+                    "Asset cache partial miss for namespace %r: "
+                    "%d uncovered interval(s)",
+                    self.cache.namespace,
+                    len(missing_intervals),
+                )
+                for missing_start, missing_end in missing_intervals:
+                    rows = self.source.load_recent_status_rows(
+                        start=missing_start,
+                        end=missing_end,
+                        include_recent_activity=include_recent_activity,
+                        include_partition_ranges=include_partition_ranges,
+                        assets=sync_assets,
+                    )
+                    self.cache.save_result(
+                        rows,
+                        start=missing_start,
+                        end=missing_end,
+                        include_activity=include_recent_activity,
+                        include_partitions=include_partition_ranges,
+                        mark_coverage=True,
+                        advance_watermark=False,
+                    )
 
             logger.info("Asset cache hit for namespace %r", self.cache.namespace)
             watermark = self.cache.watermark()

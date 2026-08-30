@@ -10,6 +10,8 @@ Run: `poetry run python -m sds_utils.scrubber`
 
 The asset-status dashboard persists Dagster results in its application database and
 renders covered date ranges from the cache before checking Dagster for updates.
+Partially covered requests query only the uncovered date intervals and merge them with
+the cached portion.
 
 Set `QUERY_DAGSTER_CACHE_NAMESPACE` to a stable deployment name such as
 `imap-production`. Cache identity does not depend on the Dagster URL: endpoint changes
