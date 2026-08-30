@@ -1272,6 +1272,7 @@ class AssetsStatusSnapshotTable(UIElem):
         self.selected_partition_types: set[str] | None = None
         self.selected_data_levels: set[str] | None = None
         self.selected_instruments: set[str] | None = None
+        self.instrument_aggregation = "combined"
         self.date_aggregation: SummaryDateAggregation = "all"
         self.aggregation_days = MIN_AGGREGATION_DAYS
         self.columns = self._columns()
@@ -1360,6 +1361,24 @@ class AssetsStatusSnapshotTable(UIElem):
         self.selected_instruments = set(values)
         self._apply()
 
+    def set_instrument_aggregation(self, value: str) -> None:
+        if value not in {
+            "combined",
+            "separate",
+            "short_only",
+            "daily",
+            "repoint",
+            "agg",
+        }:
+            return
+        self.instrument_aggregation = value
+        self._apply()
+
+    def instrument_for_group(self, group: str) -> str:
+        if self.instrument_aggregation == "separate":
+            return group.removesuffix("-short").removesuffix("-agg")
+        return group
+
     def set_instrument(self, instrument: str) -> None:
         self.instrument = instrument
         self._apply()
@@ -1403,6 +1422,10 @@ class AssetsStatusSnapshotTable(UIElem):
                 if partition_type(row["partition"]) in self.selected_partition_types
             ]
         )
+        if self.instrument_aggregation in {"short_only", "daily", "repoint", "agg"}:
+            source_rows = [
+                row for row in source_rows if self._matches_instrument_aggregation(row)
+            ]
         if self.selected_data_levels is not None:
             source_rows = [
                 row
@@ -1425,7 +1448,7 @@ class AssetsStatusSnapshotTable(UIElem):
                 *ALL_INSTRUMENTS,
                 *sorted(discovered - set(ALL_INSTRUMENTS)),
             ]
-            groups = (
+            instruments = (
                 ordered
                 if self.selected_instruments is None
                 else [
@@ -1434,7 +1457,22 @@ class AssetsStatusSnapshotTable(UIElem):
                     if instrument in self.selected_instruments
                 ]
             )
-            group_by = "instrument"
+            if self.instrument_aggregation == "separate":
+                populated_groups = {
+                    f"{instrument}-{'short' if partition_type(row['partition']) in {'daily', 'repoint'} else 'agg'}"
+                    for row in source_rows
+                    if (instrument := parse_asset_name(row["asset"])[0]) is not None
+                }
+                groups = [
+                    label
+                    for instrument in instruments
+                    for label in (f"{instrument}-short", f"{instrument}-agg")
+                    if label in populated_groups
+                ]
+                group_by = "instrument_aggregation"
+            else:
+                groups = instruments
+                group_by = "instrument"
         else:
             groups = sorted(
                 {
@@ -1496,6 +1534,16 @@ class AssetsStatusSnapshotTable(UIElem):
             )
         )
         self.table.update()
+
+    def _matches_instrument_aggregation(self, row: AssetStatusRow) -> bool:
+        kind = partition_type(row["partition"])
+        if self.instrument_aggregation == "short_only":
+            return kind in {"daily", "repoint"}
+        if self.instrument_aggregation == "daily":
+            return kind == "daily"
+        if self.instrument_aggregation == "repoint":
+            return kind == "repoint"
+        return kind not in {"daily", "repoint"}
 
 
 class DateTimePickerDialog(UIElem):
@@ -2312,6 +2360,7 @@ class AssetToolbar(UIElem):
         on_partition_types_change: Callable[[set[str]], object],
         on_data_levels_change: Callable[[set[str]], object],
         on_snapshot_instruments_change: Callable[[set[str]], object],
+        on_instrument_aggregation_change: Callable[..., object],
         on_records_per_page_change: Callable[..., object],
         on_settings: Callable[..., object],
         on_export: Callable[..., object],
@@ -2333,6 +2382,7 @@ class AssetToolbar(UIElem):
         self.on_partition_types_change = on_partition_types_change
         self.on_data_levels_change = on_data_levels_change
         self.on_snapshot_instruments_change = on_snapshot_instruments_change
+        self.on_instrument_aggregation_change = on_instrument_aggregation_change
         self.on_records_per_page_change = on_records_per_page_change
         self.on_settings = on_settings
         self.on_export = on_export
@@ -2353,6 +2403,7 @@ class AssetToolbar(UIElem):
         self.partition_type_filter: SnapshotPartitionTypeFilter
         self.data_level_filter: SnapshotDataLevelFilter
         self.snapshot_instrument_filter: SnapshotInstrumentFilter
+        self.instrument_aggregation_select: Select
         self.records_per_page_select: Select
 
     def render(self) -> None:
@@ -2512,6 +2563,26 @@ class AssetToolbar(UIElem):
                     self.settings.view_mode == "snapshot"
                     and self.settings.instrument == "all"
                 )
+                self.instrument_aggregation_select = (
+                    ui.select(
+                        options={
+                            "combined": "Combined",
+                            "separate": "Separate",
+                            "short_only": "Short only",
+                            "daily": "Daily",
+                            "repoint": "Repoint",
+                            "agg": "Agg",
+                        },
+                        value="combined",
+                        label="Instr agg",
+                        on_change=self.on_instrument_aggregation_change,
+                    )
+                    .props("outlined")
+                    .classes("w-40")
+                )
+                self.instrument_aggregation_select.set_visibility(
+                    self.settings.view_mode == "snapshot"
+                )
                 self.records_per_page_select = (
                     ui.select(
                         options={
@@ -2560,6 +2631,7 @@ class AssetToolbar(UIElem):
         self.partition_type_filter.button.set_enabled(interactive)
         self.data_level_filter.button.set_enabled(interactive)
         self.snapshot_instrument_filter.button.set_enabled(interactive)
+        self.instrument_aggregation_select.set_enabled(interactive)
         self.records_per_page_select.set_enabled(interactive)
         self.start_select.set_enabled(not loading)
         self.end_select.set_enabled(not loading)
@@ -2872,6 +2944,9 @@ class AssetsStatusView(UIElem):
                 on_partition_types_change=self._on_partition_types_change,
                 on_data_levels_change=self._on_data_levels_change,
                 on_snapshot_instruments_change=(self._on_snapshot_instruments_change),
+                on_instrument_aggregation_change=(
+                    self._on_instrument_aggregation_change
+                ),
                 on_records_per_page_change=self._on_records_per_page_change,
                 on_settings=self._open_settings,
                 on_export=self._open_export,
@@ -3142,8 +3217,15 @@ class AssetsStatusView(UIElem):
         if group not in self.snapshot_table.groups:
             return
         if self.instrument == "all":
-            self.toolbar.instrument_select.value = group
-            await self.set_instrument(group)
+            instrument = self.snapshot_table.instrument_for_group(group)
+            if group.endswith("-short"):
+                self.toolbar.instrument_aggregation_select.value = "short_only"
+                self.snapshot_table.set_instrument_aggregation("short_only")
+            elif group.endswith("-agg"):
+                self.toolbar.instrument_aggregation_select.value = "agg"
+                self.snapshot_table.set_instrument_aggregation("agg")
+            self.toolbar.instrument_select.value = instrument
+            await self.set_instrument(instrument)
             return
         self.snapshot_summary_filter = (self.instrument, group)
         self.snapshot_return_instrument = self.instrument
@@ -3249,6 +3331,9 @@ class AssetsStatusView(UIElem):
     def _on_snapshot_instruments_change(self, values: set[str]) -> None:
         self.snapshot_table.set_instruments(values)
 
+    def _on_instrument_aggregation_change(self, event: object) -> None:
+        self.snapshot_table.set_instrument_aggregation(str(getattr(event, "value", "")))
+
     def _on_records_per_page_change(self, event: object) -> None:
         try:
             value = int(getattr(event, "value", self.settings.records_per_page))
@@ -3314,6 +3399,9 @@ class AssetsStatusView(UIElem):
         )
         self.toolbar.snapshot_instrument_filter.container.set_visibility(
             self.view_mode == "snapshot" and self.instrument == "all"
+        )
+        self.toolbar.instrument_aggregation_select.set_visibility(
+            self.view_mode == "snapshot"
         )
         self.drilldown_bar.set_visibility(
             self.view_mode == "all_rows" and self.table.summary_drilldown is not None

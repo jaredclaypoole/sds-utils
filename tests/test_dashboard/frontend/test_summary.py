@@ -217,6 +217,78 @@ class SummaryTests(TestCase):
         self.assertEqual(table.groups, ["lo"])
         self.assertEqual(table.table.rows[0]["lo"][2]["text"], "1")
 
+    def test_snapshot_instrument_aggregation_modes(self) -> None:
+        table = AssetsStatusSnapshotTable("all")
+        table.source_rows = [
+            {
+                "asset": "mag_l1a_daily",
+                "instrument": "mag",
+                "data_level": "l1a",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "daily_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            },
+            {
+                "asset": "mag_l1a_repoint",
+                "instrument": "mag",
+                "data_level": "l1a",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "repoint2_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            },
+            {
+                "asset": "mag_l1a_aggregate",
+                "instrument": "mag",
+                "data_level": "l1a",
+                "status": "skipped",
+                "missing_file": "",
+                "partition": "ten_day_2026-01-01T00:00:00Z_to_2026-01-11T00:00:00Z",
+            },
+        ]
+        table.table = MagicMock()
+        table.set_instruments({"mag"})
+
+        table.set_instrument_aggregation("separate")
+        self.assertEqual(table.groups, ["mag-short", "mag-agg"])
+        self.assertEqual(table.table.rows[0]["mag-short"][0]["text"], "1")
+        self.assertEqual(table.table.rows[0]["mag-short"][2]["text"], "1")
+        self.assertEqual(table.table.rows[0]["mag-agg"][3]["text"], "1")
+
+        table.set_instrument_aggregation("daily")
+        self.assertEqual(table.table.rows[0]["mag"][0]["text"], "1")
+        self.assertEqual(table.table.rows[0]["mag"][2]["text"], "0")
+        self.assertEqual(table.table.rows[0]["mag"][3]["text"], "0")
+
+        table.set_instrument_aggregation("agg")
+        self.assertEqual(table.table.rows[0]["mag"][3]["text"], "1")
+
+    def test_separate_mode_hides_empty_short_and_agg_columns(self) -> None:
+        table = AssetsStatusSnapshotTable("all")
+        table.source_rows = [
+            {
+                "asset": "mag_l1a_daily",
+                "instrument": "mag",
+                "data_level": "l1a",
+                "status": "materialized",
+                "missing_file": "",
+                "partition": "daily_2026-01-01T00:00:00Z_to_2026-01-02T00:00:00Z",
+            },
+            {
+                "asset": "lo_l1a_aggregate",
+                "instrument": "lo",
+                "data_level": "l1a",
+                "status": "failed",
+                "missing_file": "",
+                "partition": "ten_day_2026-01-01T00:00:00Z_to_2026-01-11T00:00:00Z",
+            },
+        ]
+        table.table = MagicMock()
+        table.set_instruments({"mag", "lo"})
+
+        table.set_instrument_aggregation("separate")
+
+        self.assertEqual(table.groups, ["mag-short", "lo-agg"])
+
     def test_snapshot_filter_all_parents_toggle_every_available_child(self) -> None:
         partition_filter = object.__new__(SnapshotPartitionTypeFilter)
         partition_filter._updating = False
@@ -569,6 +641,7 @@ class SnapshotNavigationTests(IsolatedAsyncioTestCase):
         view = object.__new__(AssetsStatusView)
         view.instrument = "all"
         view.snapshot_table = MagicMock(groups=["mag"])
+        view.snapshot_table.instrument_for_group.return_value = "mag"
         view.toolbar = MagicMock()
         view.set_instrument = AsyncMock()
 

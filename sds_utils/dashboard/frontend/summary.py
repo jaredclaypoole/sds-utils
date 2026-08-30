@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from typing import TypedDict
 
 from ..backend.data import AssetStatusRow, parse_asset_name
-from ..backend.partition_time import partition_timestamp_range
+from ..backend.partition_time import partition_timestamp_range, partition_type
 from .models import SummaryDateAggregation
 
 SUMMARY_DIMENSIONS = ("instrument", "data_level", "descriptor", "missing_file")
@@ -226,7 +226,7 @@ def snapshot_status_rows(
     """Count each status by instrument or data level and date bucket."""
     if aggregation_days < MIN_AGGREGATION_DAYS:
         raise ValueError(f"aggregation_days must be at least {MIN_AGGREGATION_DAYS}")
-    if group_by not in {"instrument", "data_level"}:
+    if group_by not in {"instrument", "instrument_aggregation", "data_level"}:
         raise ValueError(f"Unknown snapshot grouping: {group_by}")
     group_names = tuple(groups)
     known_groups = set(group_names)
@@ -234,7 +234,17 @@ def snapshot_status_rows(
     start_dates: dict[date | None, list[date]] = {}
     for row in rows:
         instrument, data_level, _descriptor = parse_asset_name(row["asset"])
-        group = instrument if group_by == "instrument" else data_level
+        if group_by == "instrument":
+            group = instrument
+        elif group_by == "instrument_aggregation":
+            aggregation = (
+                "short"
+                if partition_type(row.get("partition", "")) in {"daily", "repoint"}
+                else "agg"
+            )
+            group = f"{instrument}-{aggregation}"
+        else:
+            group = data_level
         if group not in known_groups:
             continue
         timestamp_range = partition_timestamp_range(row.get("partition", ""))
