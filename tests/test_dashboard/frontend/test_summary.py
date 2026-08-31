@@ -734,6 +734,21 @@ class SnapshotNavigationTests(IsolatedAsyncioTestCase):
         self.assertEqual(view.toolbar.instrument_select.value, "mag")
         view.set_instrument.assert_awaited_once_with("mag")
 
+    async def test_separate_header_link_preserves_instrument_aggregation(self) -> None:
+        view = object.__new__(AssetsStatusView)
+        view.instrument = "all"
+        view.snapshot_table = MagicMock(groups=["mag-short"])
+        view.snapshot_table.instrument_for_group.return_value = "mag"
+        view.toolbar = MagicMock()
+        view.toolbar.instrument_aggregation_select.value = "separate"
+        view.set_instrument = AsyncMock()
+
+        await view._on_snapshot_group_click("mag-short")
+
+        self.assertEqual(view.toolbar.instrument_aggregation_select.value, "separate")
+        view.snapshot_table.set_instrument_aggregation.assert_not_called()
+        view.set_instrument.assert_awaited_once_with("mag")
+
     async def test_data_level_header_opens_filtered_summary(self) -> None:
         view = object.__new__(AssetsStatusView)
         view.instrument = "mag"

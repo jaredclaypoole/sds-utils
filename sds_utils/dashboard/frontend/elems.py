@@ -3331,13 +3331,6 @@ class AssetsStatusView(UIElem):
             return
         if self.instrument == "all":
             instrument = self.snapshot_table.instrument_for_group(group)
-            aggregation = self.snapshot_table.aggregation_for_group(group)
-            if aggregation == "short":
-                self.toolbar.instrument_aggregation_select.value = "short_only"
-                self.snapshot_table.set_instrument_aggregation("short_only")
-            elif aggregation == "agg":
-                self.toolbar.instrument_aggregation_select.value = "agg"
-                self.snapshot_table.set_instrument_aggregation("agg")
             self.toolbar.instrument_select.value = instrument
             await self.set_instrument(instrument)
             return
