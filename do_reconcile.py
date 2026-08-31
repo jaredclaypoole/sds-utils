@@ -497,6 +497,7 @@ def group_by_date_ranges(ddf: pd.DataFrame) -> pd.DataFrame:
         return pd.Series(
             dict(
                 date_ranges=df.date_ranges.iloc[0],
+                count=df.Date.count(),
                 first_link=df["Partition link"].iloc[0],
             )
         )
