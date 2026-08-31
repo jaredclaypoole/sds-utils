@@ -132,6 +132,11 @@ class AppSettingsStoreTests(TestCase):
             show_unpartitioned_assets=True,
             view_mode="dependency_graph",
             records_per_page=100,
+            snapshot_partition_types=["daily", "idex10day"],
+            snapshot_data_levels=["l1a", "ancillary"],
+            snapshot_instruments=["mag", "spacecraft"],
+            snapshot_instrument_aggregation="separate",
+            snapshot_show_totals=True,
             dependency_graph_instrument="spacecraft",
             summary_column_filters={
                 "instrument": ColumnFilterSettings(mode="pattern", value="^mag$")

@@ -400,6 +400,33 @@ class SummaryTests(TestCase):
             "Instruments\nENA-, In-Situ, Other"
         )
 
+    def test_explicit_snapshot_selections_survive_temporarily_missing_options(
+        self,
+    ) -> None:
+        partition_filter = object.__new__(SnapshotPartitionTypeFilter)
+        partition_filter.available_types = {"daily", "repoint", "idex10day"}
+        partition_filter.selected_types = {"daily", "idex10day"}
+        partition_filter.pending_types = set(partition_filter.selected_types)
+        partition_filter.explicit_selection = True
+        partition_filter._rebuild_other_checkboxes = MagicMock()
+        partition_filter._update_button_label = MagicMock()
+
+        partition_filter.set_available_types({"daily", "repoint"})
+
+        self.assertEqual(partition_filter.selected_types, {"daily", "idex10day"})
+
+        level_filter = object.__new__(SnapshotDataLevelFilter)
+        level_filter.available_levels = {"l1a", "l2", "ancillary"}
+        level_filter.selected_levels = {"l1a", "ancillary"}
+        level_filter.pending_levels = set(level_filter.selected_levels)
+        level_filter.explicit_selection = True
+        level_filter._rebuild_checkboxes = MagicMock()
+        level_filter._update_button_label = MagicMock()
+
+        level_filter.set_available_levels({"l1a"})
+
+        self.assertEqual(level_filter.selected_levels, {"l1a", "ancillary"})
+
     def test_snapshot_groups_each_instrument_into_the_same_date_rows(self) -> None:
         rows = [
             {

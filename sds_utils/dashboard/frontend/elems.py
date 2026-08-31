@@ -53,6 +53,7 @@ from .models import (
     DependencyGraphInstrument,
     EndMode,
     FilterMode,
+    InstrumentAggregation,
     InstrumentName,
     OptionalColumn,
     RecordsPerPage,
@@ -2018,10 +2019,17 @@ class ExportDialog(UIElem):
 class SnapshotPartitionTypeFilter(UIElem):
     """Staged hierarchical partition-type selector for snapshot rows."""
 
-    def __init__(self, on_apply: Callable[[set[str]], object]) -> None:
+    def __init__(
+        self,
+        on_apply: Callable[[set[str]], object],
+        selected: list[str] | None = None,
+    ) -> None:
         self.on_apply = on_apply
         self.available_types: set[str] = {"daily", "repoint"}
-        self.selected_types: set[str] = set(self.available_types)
+        self.explicit_selection = selected is not None
+        self.selected_types: set[str] = (
+            set(self.available_types) if selected is None else set(selected)
+        )
         self.pending_types: set[str] = set(self.selected_types)
         self._updating = False
         self.other_checkboxes: dict[str, Any] = {}
@@ -2067,7 +2075,8 @@ class SnapshotPartitionTypeFilter(UIElem):
         available = {"daily", "repoint", *values}
         newly_available = available - self.available_types
         self.available_types = available
-        self.selected_types = (self.selected_types & available) | newly_available
+        if not self.explicit_selection:
+            self.selected_types.update(newly_available)
         self.pending_types = set(self.selected_types)
         self._rebuild_other_checkboxes()
         self._update_button_label()
@@ -2100,9 +2109,9 @@ class SnapshotPartitionTypeFilter(UIElem):
         if self._updating:
             return
         if bool(getattr(event, "value", False)):
-            self.pending_types = set(self.available_types)
+            self.pending_types.update(self.available_types)
         else:
-            self.pending_types.clear()
+            self.pending_types.difference_update(self.available_types)
         self._sync_checkboxes()
 
     def _repoint_changed(self, event: object) -> None:
@@ -2169,12 +2178,16 @@ class SnapshotPartitionTypeFilter(UIElem):
     def _commit_pending(self) -> None:
         if self.pending_types == self.selected_types:
             return
+        self.explicit_selection = True
         self.selected_types = set(self.pending_types)
         self._update_button_label()
         self.on_apply(set(self.selected_types))
 
     def _update_button_label(self) -> None:
-        if self.available_types and self.selected_types == self.available_types:
+        if (
+            self.available_types
+            and self.selected_types & self.available_types == self.available_types
+        ):
             self.button.set_text("Partition types\nAll")
             return
         labels: list[str] = []
@@ -2197,10 +2210,15 @@ class SnapshotDataLevelFilter(UIElem):
     CATEGORIES: tuple[str, ...] = ("l0", "l1", "l2", "l3", "other")
     BUTTON_LABEL = "Data levels"
 
-    def __init__(self, on_apply: Callable[[set[str]], object]) -> None:
+    def __init__(
+        self,
+        on_apply: Callable[[set[str]], object],
+        selected: list[str] | None = None,
+    ) -> None:
         self.on_apply = on_apply
         self.available_levels: set[str] = set()
-        self.selected_levels: set[str] = set()
+        self.explicit_selection = selected is not None
+        self.selected_levels: set[str] = set(selected or [])
         self.pending_levels: set[str] = set()
         self._updating = False
         self.parent_checkboxes: dict[str, Any] = {}
@@ -2252,9 +2270,8 @@ class SnapshotDataLevelFilter(UIElem):
     def set_available_levels(self, values: set[str]) -> None:
         newly_available = values - self.available_levels
         self.available_levels = set(values)
-        self.selected_levels = (
-            self.selected_levels & self.available_levels
-        ) | newly_available
+        if not self.explicit_selection:
+            self.selected_levels.update(newly_available)
         self.pending_levels = set(self.selected_levels)
         self._rebuild_checkboxes()
         self._update_button_label()
@@ -2300,9 +2317,9 @@ class SnapshotDataLevelFilter(UIElem):
         if self._updating:
             return
         if bool(getattr(event, "value", False)):
-            self.pending_levels = set(self.available_levels)
+            self.pending_levels.update(self.available_levels)
         else:
-            self.pending_levels.clear()
+            self.pending_levels.difference_update(self.available_levels)
         self._sync_checkboxes()
 
     def _child_changed(self, level: str, event: object) -> None:
@@ -2352,12 +2369,16 @@ class SnapshotDataLevelFilter(UIElem):
     def _commit_pending(self) -> None:
         if self.pending_levels == self.selected_levels:
             return
+        self.explicit_selection = True
         self.selected_levels = set(self.pending_levels)
         self._update_button_label()
         self.on_apply(set(self.selected_levels))
 
     def _update_button_label(self) -> None:
-        if self.available_levels and self.selected_levels == self.available_levels:
+        if (
+            self.available_levels
+            and self.selected_levels & self.available_levels == self.available_levels
+        ):
             self.button.set_text(f"{self.BUTTON_LABEL}\nAll")
             return
         labels: list[str] = []
@@ -2613,19 +2634,22 @@ class AssetToolbar(UIElem):
                     and self.settings.summary_date_aggregation == "days"
                 )
                 self.partition_type_filter = SnapshotPartitionTypeFilter(
-                    self.on_partition_types_change
+                    self.on_partition_types_change,
+                    self.settings.snapshot_partition_types,
                 ).build()
                 self.partition_type_filter.container.set_visibility(
                     self.settings.view_mode == "snapshot"
                 )
                 self.data_level_filter = SnapshotDataLevelFilter(
-                    self.on_data_levels_change
+                    self.on_data_levels_change,
+                    self.settings.snapshot_data_levels,
                 ).build()
                 self.data_level_filter.container.set_visibility(
                     self.settings.view_mode == "snapshot"
                 )
                 self.snapshot_instrument_filter = SnapshotInstrumentFilter(
-                    self.on_snapshot_instruments_change
+                    self.on_snapshot_instruments_change,
+                    self.settings.snapshot_instruments,
                 ).build()
                 self.snapshot_instrument_filter.container.set_visibility(
                     self.settings.view_mode == "snapshot"
@@ -2641,7 +2665,7 @@ class AssetToolbar(UIElem):
                             "repoint": "Repoint",
                             "agg": "Agg",
                         },
-                        value="combined",
+                        value=self.settings.snapshot_instrument_aggregation,
                         label="Instr agg",
                         on_change=self.on_instrument_aggregation_change,
                     )
@@ -2654,7 +2678,9 @@ class AssetToolbar(UIElem):
                 self.snapshot_totals_select = (
                     ui.select(
                         options={"hide": "Hide", "show": "Show"},
-                        value="hide",
+                        value=(
+                            "show" if self.settings.snapshot_show_totals else "hide"
+                        ),
                         label="Cell totals",
                         on_change=self.on_snapshot_totals_change,
                     )
@@ -3097,6 +3123,10 @@ class AssetsStatusView(UIElem):
             ).build()
             self.snapshot_table.restore_settings(self.settings)
             self.snapshot_table.set_sorting(self.sorting_rules)
+            self.snapshot_table.set_instrument_aggregation(
+                self.settings.snapshot_instrument_aggregation
+            )
+            self.snapshot_table.set_show_totals(self.settings.snapshot_show_totals)
             self._set_records_per_page(self.settings.records_per_page)
             self.dependency_graph_view = DependencyGraphView().build()
             self._apply_view_visibility()
@@ -3408,20 +3438,25 @@ class AssetsStatusView(UIElem):
 
     def _on_partition_types_change(self, values: set[str]) -> None:
         self.snapshot_table.set_partition_types(values)
+        self._schedule_settings_save()
 
     def _on_data_levels_change(self, values: set[str]) -> None:
         self.snapshot_table.set_data_levels(values)
+        self._schedule_settings_save()
 
     def _on_snapshot_instruments_change(self, values: set[str]) -> None:
         self.snapshot_table.set_instruments(values)
+        self._schedule_settings_save()
 
     def _on_instrument_aggregation_change(self, event: object) -> None:
         self.snapshot_table.set_instrument_aggregation(str(getattr(event, "value", "")))
+        self._schedule_settings_save()
 
     def _on_snapshot_totals_change(self, event: object) -> None:
         self.snapshot_table.set_show_totals(
             str(getattr(event, "value", "hide")) == "show"
         )
+        self._schedule_settings_save()
 
     def _on_records_per_page_change(self, event: object) -> None:
         try:
@@ -3660,6 +3695,26 @@ class AssetsStatusView(UIElem):
             records_per_page=cast(
                 RecordsPerPage, int(self.toolbar.records_per_page_select.value)
             ),
+            snapshot_partition_types=(
+                sorted(self.toolbar.partition_type_filter.selected_types)
+                if self.toolbar.partition_type_filter.explicit_selection
+                else None
+            ),
+            snapshot_data_levels=(
+                sorted(self.toolbar.data_level_filter.selected_levels)
+                if self.toolbar.data_level_filter.explicit_selection
+                else None
+            ),
+            snapshot_instruments=(
+                sorted(self.toolbar.snapshot_instrument_filter.selected_instruments)
+                if self.toolbar.snapshot_instrument_filter.explicit_selection
+                else None
+            ),
+            snapshot_instrument_aggregation=cast(
+                InstrumentAggregation,
+                str(self.toolbar.instrument_aggregation_select.value),
+            ),
+            snapshot_show_totals=(self.toolbar.snapshot_totals_select.value == "show"),
             dependency_graph_instrument=cast(
                 DependencyGraphInstrument, self.dependency_graph_instrument
             ),

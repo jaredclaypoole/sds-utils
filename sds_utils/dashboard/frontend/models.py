@@ -100,6 +100,9 @@ StartMode = Literal[
 EndMode = Literal["now", "custom"]
 ViewMode = Literal["all_rows", "summary", "snapshot", "dependency_graph"]
 RecordsPerPage = Literal[10, 25, 50, 100, 250]
+InstrumentAggregation = Literal[
+    "combined", "separate", "short_only", "daily", "repoint", "agg"
+]
 OptionalColumn = Literal["tags", "notes"]
 SummarySortColumn = Literal[
     "",
@@ -170,6 +173,11 @@ class AppSettingsState(BaseModel):
     show_unpartitioned_assets: bool = False
     view_mode: ViewMode = "all_rows"
     records_per_page: RecordsPerPage = 25
+    snapshot_partition_types: list[str] | None = None
+    snapshot_data_levels: list[str] | None = None
+    snapshot_instruments: list[str] | None = None
+    snapshot_instrument_aggregation: InstrumentAggregation = "combined"
+    snapshot_show_totals: bool = False
     dependency_graph_instrument: DependencyGraphInstrument = "mag"
     summary_column_filters: dict[str, ColumnFilterSettings] = PydanticField(
         default_factory=dict
