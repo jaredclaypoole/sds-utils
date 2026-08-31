@@ -55,6 +55,11 @@ class SummaryTests(TestCase):
         self.assertEqual(table.table.rows[1]["codice"][0]["text"], " 1")
         self.assertEqual(table.table.rows[1]["codice"][2]["text"], "1")
 
+        table.set_show_totals(True)
+
+        self.assertEqual(table.table.rows[0]["codice__total"], "10")
+        self.assertEqual(table.table.rows[1]["codice__total"], " 2")
+
     def test_snapshot_uses_data_level_columns_for_one_instrument(self) -> None:
         table = AssetsStatusSnapshotTable("mag")
         table.source_rows = [

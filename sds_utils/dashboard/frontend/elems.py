@@ -1274,6 +1274,7 @@ class AssetsStatusSnapshotTable(UIElem):
         self.selected_instruments: set[str] | None = None
         self.instrument_aggregation = "combined"
         self.group_aggregation_kinds: dict[str, str] = {}
+        self.show_totals = False
         self.date_aggregation: SummaryDateAggregation = "all"
         self.aggregation_days = MIN_AGGREGATION_DAYS
         self.columns = self._columns()
@@ -1330,6 +1331,10 @@ class AssetsStatusSnapshotTable(UIElem):
                 f"body-cell-{group}",
                 """
                 <q-td :props="props" class="font-mono whitespace-pre">
+                  <span
+                    v-if="props.row[props.col.name + '__total'] !== null"
+                    :class="parseInt(props.row[props.col.name + '__total'], 10) === 0 ? 'text-grey-3' : 'text-slate-400'"
+                  >{{ props.row[props.col.name + '__total'] }}: </span>
                   <template v-for="(part, index) in props.value" :key="index">
                     <span :class="part.color">{{ part.text }}</span><span
                       v-if="index < props.value.length - 1" class="text-grey-3"
@@ -1375,6 +1380,10 @@ class AssetsStatusSnapshotTable(UIElem):
         self.instrument_aggregation = value
         self._apply()
 
+    def set_show_totals(self, value: bool) -> None:
+        self.show_totals = value
+        self._apply()
+
     def instrument_for_group(self, group: str) -> str:
         if self.instrument_aggregation == "separate":
             return group.removesuffix("-short").removesuffix("-agg")
@@ -1416,7 +1425,7 @@ class AssetsStatusSnapshotTable(UIElem):
         if self.date_aggregation == "days":
             self._apply()
 
-    def _apply(self) -> None:  # noqa: PLR0912
+    def _apply(self) -> None:  # noqa: PLR0912, PLR0915
         aggregation_labels: dict[str, str] | None = None
         source_rows = (
             self.source_rows
@@ -1527,6 +1536,13 @@ class AssetsStatusSnapshotTable(UIElem):
             for group in self.groups
             for status in SUMMARY_STATUSES
         }
+        total_widths = {
+            group: max(
+                (len(str(sum(row["counts"][group].values()))) for row in snapshot_rows),
+                default=1,
+            )
+            for group in self.groups
+        }
         rendered_rows: list[dict[str, object]] = []
         for row in snapshot_rows:
             rendered: dict[str, object] = {
@@ -1535,6 +1551,11 @@ class AssetsStatusSnapshotTable(UIElem):
                 "last_date": row["last_date"],
             }
             for group in self.groups:
+                rendered[f"{group}__total"] = (
+                    str(sum(row["counts"][group].values())).rjust(total_widths[group])
+                    if self.show_totals
+                    else None
+                )
                 rendered[group] = [
                     {
                         "text": str(row["counts"][group][status]).rjust(
@@ -2405,6 +2426,7 @@ class AssetToolbar(UIElem):
         on_data_levels_change: Callable[[set[str]], object],
         on_snapshot_instruments_change: Callable[[set[str]], object],
         on_instrument_aggregation_change: Callable[..., object],
+        on_snapshot_totals_change: Callable[..., object],
         on_records_per_page_change: Callable[..., object],
         on_settings: Callable[..., object],
         on_export: Callable[..., object],
@@ -2427,6 +2449,7 @@ class AssetToolbar(UIElem):
         self.on_data_levels_change = on_data_levels_change
         self.on_snapshot_instruments_change = on_snapshot_instruments_change
         self.on_instrument_aggregation_change = on_instrument_aggregation_change
+        self.on_snapshot_totals_change = on_snapshot_totals_change
         self.on_records_per_page_change = on_records_per_page_change
         self.on_settings = on_settings
         self.on_export = on_export
@@ -2448,6 +2471,7 @@ class AssetToolbar(UIElem):
         self.data_level_filter: SnapshotDataLevelFilter
         self.snapshot_instrument_filter: SnapshotInstrumentFilter
         self.instrument_aggregation_select: Select
+        self.snapshot_totals_select: Select
         self.records_per_page_select: Select
 
     def render(self) -> None:
@@ -2627,6 +2651,19 @@ class AssetToolbar(UIElem):
                 self.instrument_aggregation_select.set_visibility(
                     self.settings.view_mode == "snapshot"
                 )
+                self.snapshot_totals_select = (
+                    ui.select(
+                        options={"hide": "Hide", "show": "Show"},
+                        value="hide",
+                        label="Cell totals",
+                        on_change=self.on_snapshot_totals_change,
+                    )
+                    .props("outlined")
+                    .classes("w-36")
+                )
+                self.snapshot_totals_select.set_visibility(
+                    self.settings.view_mode == "snapshot"
+                )
                 self.records_per_page_select = (
                     ui.select(
                         options={
@@ -2676,6 +2713,7 @@ class AssetToolbar(UIElem):
         self.data_level_filter.button.set_enabled(interactive)
         self.snapshot_instrument_filter.button.set_enabled(interactive)
         self.instrument_aggregation_select.set_enabled(interactive)
+        self.snapshot_totals_select.set_enabled(interactive)
         self.records_per_page_select.set_enabled(interactive)
         self.start_select.set_enabled(not loading)
         self.end_select.set_enabled(not loading)
@@ -2991,6 +3029,7 @@ class AssetsStatusView(UIElem):
                 on_instrument_aggregation_change=(
                     self._on_instrument_aggregation_change
                 ),
+                on_snapshot_totals_change=self._on_snapshot_totals_change,
                 on_records_per_page_change=self._on_records_per_page_change,
                 on_settings=self._open_settings,
                 on_export=self._open_export,
@@ -3379,6 +3418,11 @@ class AssetsStatusView(UIElem):
     def _on_instrument_aggregation_change(self, event: object) -> None:
         self.snapshot_table.set_instrument_aggregation(str(getattr(event, "value", "")))
 
+    def _on_snapshot_totals_change(self, event: object) -> None:
+        self.snapshot_table.set_show_totals(
+            str(getattr(event, "value", "hide")) == "show"
+        )
+
     def _on_records_per_page_change(self, event: object) -> None:
         try:
             value = int(getattr(event, "value", self.settings.records_per_page))
@@ -3448,6 +3492,7 @@ class AssetsStatusView(UIElem):
         self.toolbar.instrument_aggregation_select.set_visibility(
             self.view_mode == "snapshot"
         )
+        self.toolbar.snapshot_totals_select.set_visibility(self.view_mode == "snapshot")
         self.drilldown_bar.set_visibility(
             self.view_mode == "all_rows" and self.table.summary_drilldown is not None
         )
