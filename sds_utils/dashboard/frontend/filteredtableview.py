@@ -17,7 +17,8 @@ class FilteredTableView(UIElem):
             end_time=datetime.datetime(2026, 8, 30) - datetime.timedelta(seconds=1),
         )
         self.table.set_query(query)
-        data = self.table.data()
+        example_kwargs = dict(instrument=dict(excluded_values_regex="codice|glows"))
+        data = self.table.transform_data(example_kwargs)
         self.table_view = AutoTableView(data).build()
 
 
