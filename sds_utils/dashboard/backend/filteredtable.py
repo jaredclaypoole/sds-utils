@@ -1,0 +1,2 @@
+class FilteredTable:
+    pass
