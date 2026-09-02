@@ -94,8 +94,8 @@ class CSVDataSource:
         assert query.start_time >= datetime.datetime(2026, 8, 1)
         assert query.end_time < datetime.datetime(2026, 8, 30)
 
-        start_time_pd = pd.to_datetime(query.start_time)
-        end_time_pd = pd.to_datetime(query.end_time)
+        start_time_pd = pd.to_datetime(query.start_time, utc=True, unit="ns")
+        end_time_pd = pd.to_datetime(query.end_time, utc=True, unit="ns")
 
         path = Path(
             "dashboard-output/august-only/aug_1-29/run_2026-08-31_06-57/imap-run-status-all-rows-20260831T105726Z.csv"
