@@ -1,16 +1,26 @@
 import pandas as pd
+from pydantic import BaseModel
 
 from .data import DataSchema, DataSourceBase, QuerySpec
 from .filtersbase import (
     FilterArguments,
     FiltersBase,
-    StringFilterProperty
+    StrHierarchySpec,
+    StringRegisteredFilter,
 )
 
 
 class Filters(FiltersBase):
-    status = StringFilterProperty()
-    instrument = StringFilterProperty()
+    status = StringRegisteredFilter.property()
+    instrument = StringRegisteredFilter.property(
+        hierarchy=StrHierarchySpec(
+            hierarchy={
+                "ENA": "lo hi ultra".split(),
+                "In-situ": "codice glows hit idex mag swapi swe".split(),
+            },
+            missing="Other",
+        ),
+    )
 
 
 class FilteredTable:
