@@ -87,7 +87,7 @@ class FilterProperty(
 
 
 class StrHierarchySpec(BaseModel):
-    hierarchy: dict[str, list[str]] | Callable[[Iterator[str]], dict[str, list[str]]]
+    hierarchy: dict[str, list[str]] | Callable[[Iterable[str]], dict[str, list[str]]]
     other: str | None = "Other"
     all: str | None = "All"
 

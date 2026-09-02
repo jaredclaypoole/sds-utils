@@ -31,7 +31,7 @@ class Filters(FiltersBase):
             },
         ),
     )
-    level = StringRegisteredFilter.property(
+    data_level = StringRegisteredFilter.property(
         hierarchy=StrHierarchySpec(
             hierarchy=_make_data_level_hierachy,
         ),
