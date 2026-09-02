@@ -1,5 +1,7 @@
+from collections import defaultdict
+from typing import Iterable
+
 import pandas as pd
-from pydantic import BaseModel
 
 from .data import DataSchema, DataSourceBase, QuerySpec
 from .filtersbase import (
@@ -10,6 +12,15 @@ from .filtersbase import (
 )
 
 
+def _make_data_level_hierachy(values: Iterable[str]) -> dict[str, list[str]]:
+    values = [value for value in values if value.lower().startswith("l")]
+    hierarchy_sets: dict[str, set[str]] = defaultdict(set)
+    for value in values:
+        prefix = value[:2]
+        hierarchy_sets[prefix].add(value)
+    return {key: sorted(values_set) for key, values_set in hierarchy_sets.items()}
+
+
 class Filters(FiltersBase):
     status = StringRegisteredFilter.property()
     instrument = StringRegisteredFilter.property(
@@ -18,7 +29,19 @@ class Filters(FiltersBase):
                 "ENA": "lo hi ultra".split(),
                 "In-situ": "codice glows hit idex mag swapi swe".split(),
             },
-            missing="Other",
+        ),
+    )
+    level = StringRegisteredFilter.property(
+        hierarchy=StrHierarchySpec(
+            hierarchy=_make_data_level_hierachy,
+        ),
+    )
+    partition_label = StringRegisteredFilter.property(
+        hierarchy=StrHierarchySpec(
+            hierarchy=dict(
+                Short="daily repoint".split(),
+            ),
+            other="Long",
         ),
     )
 

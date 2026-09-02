@@ -1,5 +1,5 @@
 import inspect
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Any, Generic, Protocol, Self, TypeVar, cast, overload
@@ -87,8 +87,15 @@ class FilterProperty(
 
 
 class StrHierarchySpec(BaseModel):
-    hierarchy: dict[str, list[str]]
-    missing: str | None
+    hierarchy: dict[str, list[str]] | Callable[[Iterator[str]], dict[str, list[str]]]
+    other: str | None = "Other"
+    all: str | None = "All"
+
+    def build_hierarchy(self, values: Iterable[str]) -> dict[str, list[str]]:
+        if callable(self.hierarchy):
+            return self.hierarchy(values)
+        else:
+            return self.hierarchy
 
 
 @dataclass(frozen=True)
