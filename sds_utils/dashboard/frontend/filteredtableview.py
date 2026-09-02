@@ -17,17 +17,13 @@ class FilteredTableView(UIElem):
             end_time=datetime.datetime(2026, 8, 30) - datetime.timedelta(seconds=1),
         )
         self.table.set_query(query)
-        example_kwargs = dict(instrument=dict(excluded_values_regex="codice|glows"))
-        data = self.table.transform_data(example_kwargs)
-        self.table_view = AutoTableView(data).build()
+        example_kwargs = dict(
+            instrument=dict(excluded_values_regex="codice|glows"),
+            partition_label=dict(excluded_values_regex="daily")
+        )
+        data_df = self.table.transform_data(example_kwargs)
 
-
-class AutoTableView(UIElem):
-    def __init__(self, data_df: pd.DataFrame) -> None:
-        self.data_df = data_df
-
-    def render(self) -> None:
-        self.table = ui.table.from_pandas(
-            self.data_df,
+        self.table_elem = ui.table.from_pandas(
+            data_df,
             pagination=25,
         ).classes("w-full")
