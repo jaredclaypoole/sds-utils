@@ -94,10 +94,18 @@ class CSVDataSource:
         assert query.start_time >= datetime.datetime(2026, 8, 1)
         assert query.end_time < datetime.datetime(2026, 8, 30)
 
+        start_time_pd = pd.to_datetime(query.start_time)
+        end_time_pd = pd.to_datetime(query.end_time)
+
         path = Path(
             "dashboard-output/august-only/aug_1-29/run_2026-08-31_06-57/imap-run-status-all-rows-20260831T105726Z.csv"
         )
         _raw_df = pd.read_csv(path)
         raw_df = CSVDataSchema.validate(_raw_df, lazy=True)
         data_df = CSVDataSchema.convert_data(raw_df)
-        return data_df
+        date_mask = (
+            (data_df["start_date"] >= start_time_pd) &
+            (data_df["end_date"] <= end_time_pd)
+        )
+        data_df_filtered = data_df[date_mask]
+        return data_df_filtered
