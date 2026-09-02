@@ -57,6 +57,7 @@ class CSVDataSchema(pa.DataFrameModel):
             invalid_labels = partition_labels.loc[invalid_repoints].unique().tolist()
             raise ValueError(f"Invalid repoint labels: {invalid_labels}")
         repoint = pd.to_numeric(repoint_values).astype("Int64")
+        partition_labels = partition_labels.where(~is_repoint, "repoint")
 
         converted = pd.DataFrame(
             {
