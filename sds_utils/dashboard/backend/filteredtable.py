@@ -57,6 +57,10 @@ class FilteredTable:
         self._query_spec: QuerySpec | None = None
         self._full_data_df: pd.DataFrame[DataSchema] | None = None
 
+    @property
+    def filters(self) -> Filters:
+        return self._filters
+
     def set_query(self, query_spec: QuerySpec) -> None:
         self._query_spec = query_spec
 
