@@ -18,7 +18,13 @@ def render() -> None:
 
 
 def main() -> None:
-    ui.run(root=render, reload=False, port=8893)
+    ui.run(
+        root=render,
+        title="IMAP Processing Status Dashboard",
+        favicon="📈",
+        reload=False,
+        port=8893,
+    )
 
 
 if __name__ in {"__main__", "__mp_main__"}:
