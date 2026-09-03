@@ -72,7 +72,7 @@ class StringFilterMenu(UIElem):
 
     def render(self) -> None:
         """Create the checkbox hierarchy inside the current menu slot."""
-        with ui.column().classes("gap-0 p-2 min-w-48"):
+        with ui.column().classes("gap-1 p-3 min-w-52"):
             for node in self.nodes:
                 self._render_node(node, depth=0)
 
@@ -83,9 +83,9 @@ class StringFilterMenu(UIElem):
             on_change=lambda event, current=node: self._toggle_node(
                 current, bool(event.value)
             ),
-        ).props("dense")
+        ).props("dense").classes("py-0.5")
         if depth:
-            node.checkbox.style(f"margin-left: {depth * 1.25}rem")
+            node.checkbox.style(f"margin-left: {depth * 1.5}rem")
         for child in node.children:
             self._render_node(child, depth + 1)
 
