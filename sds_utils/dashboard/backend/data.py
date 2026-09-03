@@ -14,14 +14,17 @@ class DataSchema(pa.DataFrameModel):
     descriptor: str
     partition: str
     partition_label: str
-    start_date: pd.DatetimeTZDtype = pa.Field(
-        dtype_kwargs={"unit": "ns", "tz": "UTC"}
-    )
-    end_date: pd.DatetimeTZDtype = pa.Field(
-        dtype_kwargs={"unit": "ns", "tz": "UTC"}
-    )
     repoint: int = pa.Field(nullable=True)
-    updated: str = pa.Field(nullable=True)
+    start_time: pd.DatetimeTZDtype = pa.Field(
+        dtype_kwargs={"unit": "ns", "tz": "UTC"}
+    )
+    end_time: pd.DatetimeTZDtype = pa.Field(
+        dtype_kwargs={"unit": "ns", "tz": "UTC"}
+    )
+    updated: pd.DatetimeTZDtype = pa.Field(
+        dtype_kwargs={"unit": "ns", "tz": "UTC"},
+        nullable=True,
+    )
     status: str
     missing_file: str = pa.Field(nullable=True)
     skip_reason: str = pa.Field(nullable=True)

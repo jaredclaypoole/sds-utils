@@ -33,8 +33,8 @@ class CSVDataSchema(pa.DataFrameModel):
         raw_df = CSVDataSchema.validate(raw_df, lazy=True)
         partition_parts = raw_df["Partition"].str.extract(
             r"^(?P<partition_label>.+)_"
-            r"(?P<start_date>\d{4}-\d{2}-\d{2}T[^_]+)_to_"
-            r"(?P<end_date>\d{4}-\d{2}-\d{2}T.+)$"
+            r"(?P<start_time>\d{4}-\d{2}-\d{2}T[^_]+)_to_"
+            r"(?P<end_time>\d{4}-\d{2}-\d{2}T.+)$"
         )
 
         if partition_parts.isna().any(axis=None):
@@ -73,12 +73,12 @@ class CSVDataSchema(pa.DataFrameModel):
                 "descriptor": raw_df["Descriptor"],
                 "partition": raw_df["Partition"],
                 "partition_label": partition_labels,
-                "start_date": pd.to_datetime(
-                    partition_parts["start_date"], utc=True
-                ),
-                "end_date": pd.to_datetime(partition_parts["end_date"], utc=True),
                 "repoint": repoint,
-                "updated": raw_df["Updated (UTC)"],
+                "start_time": pd.to_datetime(
+                    partition_parts["start_time"], utc=True
+                ),
+                "end_time": pd.to_datetime(partition_parts["end_time"], utc=True),
+                "updated": pd.to_datetime(raw_df["Updated (UTC)"], utc=True),
                 "status": raw_df["Status"],
                 "missing_file": raw_df["Missing file"],
                 "skip_reason": raw_df["Skip reason"],
@@ -104,8 +104,8 @@ class CSVDataSource:
         raw_df = CSVDataSchema.validate(_raw_df, lazy=True)
         data_df = CSVDataSchema.convert_data(raw_df)
         date_mask = (
-            (data_df["start_date"] >= start_time_pd) &
-            (data_df["end_date"] <= end_time_pd)
+            (data_df["start_time"] >= start_time_pd) &
+            (data_df["end_time"] <= end_time_pd)
         )
         data_df_filtered = data_df[date_mask]
         return data_df_filtered
