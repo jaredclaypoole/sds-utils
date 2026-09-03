@@ -31,7 +31,7 @@ class StringFilterMenu(UIElem):
         on_change: Any,
     ) -> None:
         self.filter = filter_
-        self.values = tuple(sorted(set(values)))
+        self.values = tuple(dict.fromkeys(values))
         self.selected = set(self.values)
         self.on_change = on_change
         self._updating = False
@@ -123,6 +123,17 @@ class StringFilterMenu(UIElem):
                 re.escape(value) for value in sorted(excluded)
             )
         }
+
+    def set_value_selected(self, value: str, selected: bool) -> None:
+        """Select or clear one concrete value and notify the table view."""
+        if value not in self.values:
+            return
+        if selected:
+            self.selected.add(value)
+        else:
+            self.selected.discard(value)
+        self._sync_checkboxes()
+        self.on_change()
 
     @classmethod
     def _walk_nodes(
