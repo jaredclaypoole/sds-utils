@@ -26,10 +26,29 @@ class FilteredTableView(UIElem):
         self.table.set_query(query)
         data_df = self.table.transform_data()
 
+        cols_to_drop = [
+            "asset",
+            "partition",
+        ]
+        data_df = data_df.drop(columns=cols_to_drop)
+
         self.table_elem = ui.table.from_pandas(
-            data_df,
+            data_df.reset_index(drop=True),
             pagination=25,
         ).classes("w-full")
+        self.table_elem.add_slot(
+            "body-cell-partition_link",
+            """
+            <q-td :props="props">
+                <a
+                    :href="props.value"
+                    class="text-blue-8"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >link</a>
+            </q-td>
+            """,
+        )
         self.filter_menus: dict[str, StringFilterMenu] = {}
         column_labels = {
             column["name"]: column["label"] for column in self.table_elem.columns
