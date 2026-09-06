@@ -86,6 +86,10 @@ class CSVDataSchema(pa.DataFrameModel):
                 "partition_link": raw_df["Partition link"],
             }
         )
+        converted = converted.assign(
+            start_date=converted.start_time.dt.normalize(),
+            end_date=converted.end_time.dt.normalize(),
+        )
         return DataSchema.validate(converted, lazy=True)
 
 

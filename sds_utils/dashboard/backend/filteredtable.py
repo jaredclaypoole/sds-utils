@@ -4,6 +4,10 @@ from typing import Iterable
 import pandas as pd
 
 from .data import DataSchema, DataSourceBase, QuerySpec
+from .aggbase import (
+    AggSpec,
+    Aggregator,
+)
 from .filtersbase import (
     FilterArguments,
     FiltersBase,
@@ -51,8 +55,10 @@ class FilteredTable:
         self,
         data_source: DataSourceBase,
         filters: Filters | None = None,
+        agg: Aggregator | None = None,
     ) -> None:
         self._filters = filters or Filters()
+        self._agg = agg or Aggregator()
         self._data_source = data_source
         self._query_spec: QuerySpec | None = None
         self._full_data_df: pd.DataFrame[DataSchema] | None = None
@@ -68,7 +74,15 @@ class FilteredTable:
         assert self._query_spec is not None
         self._full_data_df = self._data_source.query(self._query_spec)
 
-    def transform_data(self, filter_kwargs: FilterArguments | None = None) -> pd.DataFrame:
+    def transform_data(
+            self,
+            filter_kwargs: FilterArguments | None = None,
+            agg_spec: AggSpec | None = None,
+        ) -> pd.DataFrame:
         if self._full_data_df is None:
             self.refresh_data()
-        return self._filters.apply(self._full_data_df, filter_kwargs)
+        data_df = self._full_data_df
+        data_df = self._filters.apply(data_df, filter_kwargs)
+        if agg_spec is not None:
+            data_df = self._agg.apply(data_df, agg_spec)
+        return data_df

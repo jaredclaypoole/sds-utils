@@ -30,6 +30,12 @@ class DataSchema(pa.DataFrameModel):
     skip_reason: str = pa.Field(nullable=True)
     missing_files: str = pa.Field(nullable=True)
     partition_link: str
+    start_date: pd.DatetimeTZDtype = pa.Field(
+        dtype_kwargs={"unit": "ns", "tz": "UTC"}
+    )
+    end_date: pd.DatetimeTZDtype = pa.Field(
+        dtype_kwargs={"unit": "ns", "tz": "UTC"}
+    )
 
     class Config:
         """Require normalized data to contain exactly the declared columns."""
