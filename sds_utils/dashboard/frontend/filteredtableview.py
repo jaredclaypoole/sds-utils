@@ -73,9 +73,9 @@ class FilteredTableView(UIElem):
         }
         for filter_ in self.table.filters:
             if not isinstance(filter_, StringRegisteredFilter):
-                continue
+                raise ValueError(f"Unrecognized filter type: {type(filter_)}")
             if filter_.name not in display_df.columns:
-                continue
+                raise ValueError(f"Unrecognized filter name: {filter_.name}")
 
             if filter_.name == "status":
                 values = list(self.status_summary.statuses)
