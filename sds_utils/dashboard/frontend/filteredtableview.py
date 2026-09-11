@@ -1,3 +1,4 @@
+from abc import abstractmethod
 import datetime
 import json
 
@@ -15,7 +16,17 @@ from .status import STATUS_BADGE_COLORS, StatusSummary
 from .uielem import UIElem
 
 
-class FilteredTableView(UIElem):
+class FilteredTableViewBase(UIElem):
+    @abstractmethod
+    def update_query(self, query: QuerySpec) -> None:
+        """Update the table query and ultimately the transforms as well."""
+
+    @abstractmethod
+    def update_table(self) -> None:
+        """Update table transforms but not the query."""
+
+
+class FilteredTableView(FilteredTableViewBase):
     def __init__(self, table: FilteredTable) -> None:
         self.table = table
 
@@ -24,9 +35,12 @@ class FilteredTableView(UIElem):
             start_time=datetime.datetime(2026, 8, 1),
             end_time=datetime.datetime(2026, 8, 30) - datetime.timedelta(seconds=1),
         )
+        self.update_query(query)
+
+    def update_query(self, query: QuerySpec):
         self.table.set_query(query)
         data_df = self.table.transform_data()
-        self.source_data_df = data_df
+        self.full_data_df = data_df
 
         statuses = data_df["status"].dropna().astype(str).unique().tolist()
         self.status_summary = StatusSummary(
@@ -87,7 +101,7 @@ class FilteredTableView(UIElem):
                     .unique()
                     .tolist()
                 )
-            menu = StringFilterMenu(filter_, values, self._apply_filters)
+            menu = StringFilterMenu(filter_, values, self.update_table)
             self.filter_menus[filter_.name] = menu
             with self.table_elem.add_slot(f"header-cell-{filter_.name}"):
                 with self.table_elem.header(filter_.name):
@@ -99,7 +113,7 @@ class FilteredTableView(UIElem):
                             menu.build()
         self._update_status_summary(data_df)
 
-    def _apply_filters(self) -> None:
+    def update_table(self) -> None:
         filter_arguments: FilterArguments = {}
         for name, menu in self.filter_menus.items():
             arguments = menu.arguments()
@@ -129,7 +143,7 @@ class FilteredTableView(UIElem):
             else set(self.status_summary.statuses)
         )
         self.status_summary.update(
-            self.source_data_df,
+            self.full_data_df,
             shown_df,
             active_statuses,
         )
