@@ -15,7 +15,6 @@ class AggPreset(StrEnum):
 
 class AggSpec(BaseModel):
     preset: AggPreset
-    instrument: str | None = None
     extra_columns: list[str] = Field(default_factory=list)
 
 
@@ -27,11 +26,6 @@ class Aggregator:
             case AggPreset.DATES_SUMMARY:
                 horiz_col = None
             case AggPreset.INSTRUMENT_SNAPSHOT:
-                if agg_spec.instrument is None:
-                    raise ValueError(
-                        f"Agg preset {agg_spec.preset} requires an instrument to be specified"
-                    )
-                data_df = data_df[data_df.instrument == agg_spec.instrument]
                 horiz_col = "data_level"
             case AggPreset.FULL_SNAPSHOT:
                 horiz_col = "instrument"
