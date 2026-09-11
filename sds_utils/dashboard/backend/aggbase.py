@@ -9,8 +9,8 @@ from .status import StatusCounts
 class AggPreset(StrEnum):
     RAW = auto()
     DATES_SUMMARY = auto()
-    INSTRUMENT_SNAPSHOT = auto()
-    FULL_SNAPSHOT = auto()
+    DATA_LEVELS_SNAPSHOT = auto()
+    INSTRUMENTS_SNAPSHOT = auto()
 
 
 class AggSpec(BaseModel):
@@ -25,9 +25,9 @@ class Aggregator:
                 return data_df
             case AggPreset.DATES_SUMMARY:
                 horiz_col = None
-            case AggPreset.INSTRUMENT_SNAPSHOT:
+            case AggPreset.DATA_LEVELS_SNAPSHOT:
                 horiz_col = "data_level"
-            case AggPreset.FULL_SNAPSHOT:
+            case AggPreset.INSTRUMENTS_SNAPSHOT:
                 horiz_col = "instrument"
             case _:
                 raise NotImplementedError(agg_spec.preset)
