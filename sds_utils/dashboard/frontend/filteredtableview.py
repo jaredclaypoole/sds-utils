@@ -1,6 +1,6 @@
-from abc import abstractmethod
 import datetime
 import json
+from abc import abstractmethod
 
 import pandas as pd
 from nicegui import ui
@@ -31,25 +31,54 @@ class FilteredTableView(FilteredTableViewBase):
         self.table = table
 
     def render(self) -> None:
+        self.status_container = ui.column().classes("w-full")
+        self.table_container = ui.column().classes("w-full")
         query = QuerySpec(
             start_time=datetime.datetime(2026, 8, 1),
             end_time=datetime.datetime(2026, 8, 30) - datetime.timedelta(seconds=1),
         )
         self.update_query(query)
 
-    def update_query(self, query: QuerySpec):
+    def update_query(self, query: QuerySpec) -> None:
         self.table.set_query(query)
-        data_df = self.table.transform_data()
-        self.full_data_df = data_df
+        self.table.refresh_data()
+        self.full_data_df = self.table.transform_data()
 
-        statuses = data_df["status"].dropna().astype(str).unique().tolist()
-        self.status_summary = StatusSummary(
-            statuses,
-            self._on_status_card_toggle,
-        ).build()
+        statuses = self.full_data_df["status"].dropna().astype(str).unique().tolist()
+        self.status_container.clear()
+        with self.status_container:
+            self.status_summary = StatusSummary(
+                statuses,
+                self._on_status_card_toggle,
+            ).build()
 
+        self.filter_menus: dict[str, StringFilterMenu] = {}
+        self.update_table()
+
+    def update_table(self) -> None:
+        selected_values = {
+            name: set(menu.selected) for name, menu in self.filter_menus.items()
+        }
+        filter_arguments: FilterArguments = {}
+        for name, menu in self.filter_menus.items():
+            arguments = menu.arguments()
+            if arguments is not None:
+                filter_arguments[name] = arguments
+
+        data_df = self.table.transform_data(filter_arguments)
         display_df = self._display_data(data_df)
 
+        self.table_container.clear()
+        self.filter_menus = {}
+        with self.table_container:
+            self._build_table(display_df, selected_values)
+        self._update_status_summary(data_df)
+
+    def _build_table(
+        self,
+        display_df: pd.DataFrame,
+        selected_values: dict[str, set[str]],
+    ) -> None:
         self.table_elem = ui.table.from_pandas(
             display_df.reset_index(drop=True),
             pagination=25,
@@ -81,7 +110,6 @@ class FilteredTableView(FilteredTableViewBase):
             </q-td>
             """,
         )
-        self.filter_menus: dict[str, StringFilterMenu] = {}
         column_labels = {
             column["name"]: column["label"] for column in self.table_elem.columns
         }
@@ -89,19 +117,21 @@ class FilteredTableView(FilteredTableViewBase):
             if not isinstance(filter_, StringRegisteredFilter):
                 raise ValueError(f"Unrecognized filter type: {type(filter_)}")
             if filter_.name not in display_df.columns:
-                raise ValueError(f"Unrecognized filter name: {filter_.name}")
+                continue
 
             if filter_.name == "status":
                 values = list(self.status_summary.statuses)
             else:
                 values = sorted(
-                    display_df[filter_.name]
+                    self.full_data_df[filter_.name]
                     .dropna()
                     .astype(str)
                     .unique()
                     .tolist()
                 )
             menu = StringFilterMenu(filter_, values, self.update_table)
+            if filter_.name in selected_values:
+                menu.selected = selected_values[filter_.name].intersection(values)
             self.filter_menus[filter_.name] = menu
             with self.table_elem.add_slot(f"header-cell-{filter_.name}"):
                 with self.table_elem.header(filter_.name):
@@ -111,24 +141,8 @@ class FilteredTableView(FilteredTableViewBase):
                     ).props("flat dense no-caps"):
                         with ui.menu():
                             menu.build()
-        self._update_status_summary(data_df)
-
-    def update_table(self) -> None:
-        filter_arguments: FilterArguments = {}
-        for name, menu in self.filter_menus.items():
-            arguments = menu.arguments()
-            if arguments is not None:
-                filter_arguments[name] = arguments
-
-        data_df = self.table.transform_data(filter_arguments)
-        rows = json.loads(
-            self._display_data(data_df).to_json(
-                orient="records",
-                date_format="iso",
-            )
-        )
-        self.table_elem.update_rows(rows)
-        self._update_status_summary(data_df)
+            if filter_.name in selected_values:
+                menu._sync_checkboxes()
 
     def _on_status_card_toggle(self, status: str, active: bool) -> None:
         status_menu = self.filter_menus.get("status")
