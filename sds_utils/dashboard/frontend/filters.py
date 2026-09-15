@@ -1,12 +1,14 @@
 """Frontend controls for registered dashboard filters."""
 
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Any, Self
 
 import pandas as pd
 from nicegui import ui
+from nicegui.elements.checkbox import Checkbox
+from nicegui.elements.table import Table
 
 from ..backend.filtersbase import (
     FilterBase,
@@ -23,7 +25,7 @@ class CheckboxNode:
     label: str
     values: tuple[str, ...]
     children: list["CheckboxNode"] = field(default_factory=list)
-    checkbox: Any = None
+    checkbox: Checkbox = field(init=False)
 
 
 class StringFilterMenu(UIElem):
@@ -33,7 +35,7 @@ class StringFilterMenu(UIElem):
         self,
         filter_: StringRegisteredFilter,
         values: list[str],
-        on_change: Any,
+        on_change: Callable[[], None],
     ) -> None:
         self.filter = filter_
         self.values = tuple(dict.fromkeys(values))
@@ -44,11 +46,15 @@ class StringFilterMenu(UIElem):
         self.nodes: list[CheckboxNode] = []
 
     @classmethod
-    def from_filter(cls, filter: FilterBase, *args: Any, **kwargs: Any) -> Self:
-        if isinstance(filter, StringRegisteredFilter):
-            return cls(filter, *args, **kwargs)
-        else:
-            raise NotImplementedError(type(filter).__name__)
+    def from_filter(
+        cls,
+        filter_: FilterBase,
+        values: list[str],
+        on_change: Callable[[], None],
+    ) -> Self:
+        if isinstance(filter_, StringRegisteredFilter):
+            return cls(filter_, values, on_change)
+        raise NotImplementedError(type(filter_).__name__)
 
     def update_values(self, values: list[str], *, reset: bool = False) -> None:
         """Update available values, optionally selecting all of them."""
@@ -65,7 +71,7 @@ class StringFilterMenu(UIElem):
         )
         self.update_values(values, reset=True)
 
-    def render_header(self, table: Any, label: str) -> None:
+    def render_header(self, table: Table, label: str) -> None:
         """Render this filter as a dropdown in its table column header."""
         with table.add_slot(f"header-cell-{self.filter.name}"):
             with table.header(self.filter.name):
