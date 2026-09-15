@@ -91,6 +91,11 @@ class StringFilterMenu(UIElem):
                     with ui.menu():
                         self.build()
 
+    def render_dropdown(self, label: str) -> None:
+        """Render this filter as a standalone dropdown control."""
+        with ui.dropdown_button(label, icon="filter_list").props("outline no-caps"):
+            self.build()
+
     def _build_nodes(self, spec: StrHierarchySpec) -> list[CheckboxNode]:
         hierarchy = spec.build_hierarchy(self.values)
         if not hierarchy:

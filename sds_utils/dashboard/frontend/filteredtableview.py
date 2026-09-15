@@ -1,10 +1,13 @@
 import datetime
 import json
 from abc import abstractmethod
+from typing import Any
 
 import pandas as pd
 from nicegui import ui
+from nicegui.events import ValueChangeEventArguments
 
+from ..backend.aggbase import AggPreset, AggSpec
 from ..backend.data import QuerySpec
 from ..backend.filteredtable import FilteredTable
 from ..backend.filtersbase import (
@@ -29,13 +32,27 @@ class FilteredTableViewBase(UIElem):
 class FilteredTableView(FilteredTableViewBase):
     def __init__(self, table: FilteredTable) -> None:
         self.table = table
+        self.agg_preset = AggPreset.RAW
 
     def render(self) -> None:
         self.filter_menus = {
             filter_.name: StringFilterMenu.from_filter(filter_, [], self.update_table)
             for filter_ in self.table.filters
         }
+        preset_options = {
+            preset.value: preset.name.replace("_", " ").capitalize()
+            for preset in AggPreset
+        }
+        self.summary_view = ui.select(
+            preset_options,
+            value=self.agg_preset.value,
+            label="Summary view",
+            on_change=self._on_agg_preset_change,
+        ).classes("min-w-56")
         self.status_summary = StatusSummary(self.filter_menus["status"]).build()
+        self.standalone_filters_container = ui.row().classes(
+            "w-full items-center gap-3 flex-wrap"
+        )
         self.table_container = ui.column().classes("w-full")
         query = QuerySpec(
             start_time=datetime.datetime(2026, 8, 1),
@@ -65,13 +82,30 @@ class FilteredTableView(FilteredTableViewBase):
             if arguments is not None:
                 filter_arguments[name] = arguments
 
-        data_df = self.table.transform_data(filter_arguments)
+        filtered_df = self.table.transform_data(filter_arguments)
+        data_df = self.table.transform_data(
+            filter_arguments,
+            AggSpec(preset=self.agg_preset),
+        )
         display_df = self._display_data(data_df)
+
+        self.standalone_filters_container.clear()
+        with self.standalone_filters_container:
+            for name, menu in self.filter_menus.items():
+                if name not in display_df.columns:
+                    menu.render_dropdown(name.replace("_", " ").title())
 
         self.table_container.clear()
         with self.table_container:
             self._build_table(display_df)
-        self.status_summary.update(self.full_data_df, data_df)
+        self.status_summary.update(self.full_data_df, filtered_df)
+
+    def _on_agg_preset_change(
+        self,
+        event: ValueChangeEventArguments[Any],
+    ) -> None:
+        self.agg_preset = AggPreset(event.value)
+        self.update_table()
 
     def _build_table(self, display_df: pd.DataFrame) -> None:
         self.table_elem = ui.table.from_pandas(
@@ -119,4 +153,7 @@ class FilteredTableView(FilteredTableViewBase):
 
     @staticmethod
     def _display_data(data_df: pd.DataFrame) -> pd.DataFrame:
-        return data_df.drop(columns=["asset", "partition"])
+        display_df = data_df.drop(columns=["asset", "partition"], errors="ignore")
+        if any(name is not None for name in display_df.index.names):
+            display_df = display_df.reset_index()
+        return display_df
