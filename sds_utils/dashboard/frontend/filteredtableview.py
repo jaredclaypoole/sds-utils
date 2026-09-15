@@ -31,7 +31,11 @@ class FilteredTableView(FilteredTableViewBase):
         self.table = table
 
     def render(self) -> None:
-        self.status_container = ui.column().classes("w-full")
+        self.filter_menus = {
+            filter_.name: StringFilterMenu.from_filter(filter_, [], self.update_table)
+            for filter_ in self.table.filters
+        }
+        self.status_summary = StatusSummary(self.filter_menus["status"]).build()
         self.table_container = ui.column().classes("w-full")
         query = QuerySpec(
             start_time=datetime.datetime(2026, 8, 1),
@@ -44,21 +48,14 @@ class FilteredTableView(FilteredTableViewBase):
         self.table.refresh_data()
         self.full_data_df = self.table.transform_data()
 
-        statuses = self.full_data_df["status"].dropna().astype(str).unique().tolist()
-        self.status_container.clear()
-        with self.status_container:
-            self.status_summary = StatusSummary(
-                statuses,
-                self._on_status_card_toggle,
-            ).build()
-
-        self.filter_menus: dict[str, StringFilterMenu] = {}
+        for name, menu in self.filter_menus.items():
+            if name == "status":
+                continue
+            menu.update_query(self.full_data_df)
+        self.status_summary.update_query(self.full_data_df)
         self.update_table()
 
     def update_table(self) -> None:
-        selected_values = {
-            name: set(menu.selected) for name, menu in self.filter_menus.items()
-        }
         filter_arguments: FilterArguments = {}
         for name, menu in self.filter_menus.items():
             arguments = menu.arguments()
@@ -69,16 +66,11 @@ class FilteredTableView(FilteredTableViewBase):
         display_df = self._display_data(data_df)
 
         self.table_container.clear()
-        self.filter_menus = {}
         with self.table_container:
-            self._build_table(display_df, selected_values)
-        self._update_status_summary(data_df)
+            self._build_table(display_df)
+        self.status_summary.update(self.full_data_df, data_df)
 
-    def _build_table(
-        self,
-        display_df: pd.DataFrame,
-        selected_values: dict[str, set[str]],
-    ) -> None:
+    def _build_table(self, display_df: pd.DataFrame) -> None:
         self.table_elem = ui.table.from_pandas(
             display_df.reset_index(drop=True),
             pagination=25,
@@ -119,48 +111,8 @@ class FilteredTableView(FilteredTableViewBase):
             if filter_.name not in display_df.columns:
                 continue
 
-            if filter_.name == "status":
-                values = list(self.status_summary.statuses)
-            else:
-                values = sorted(
-                    self.full_data_df[filter_.name]
-                    .dropna()
-                    .astype(str)
-                    .unique()
-                    .tolist()
-                )
-            menu = StringFilterMenu(filter_, values, self.update_table)
-            if filter_.name in selected_values:
-                menu.selected = selected_values[filter_.name].intersection(values)
-            self.filter_menus[filter_.name] = menu
-            with self.table_elem.add_slot(f"header-cell-{filter_.name}"):
-                with self.table_elem.header(filter_.name):
-                    with ui.button(
-                        column_labels[filter_.name],
-                        icon="filter_list",
-                    ).props("flat dense no-caps"):
-                        with ui.menu():
-                            menu.build()
-            if filter_.name in selected_values:
-                menu._sync_checkboxes()
-
-    def _on_status_card_toggle(self, status: str, active: bool) -> None:
-        status_menu = self.filter_menus.get("status")
-        if status_menu is not None:
-            status_menu.set_value_selected(status, active)
-
-    def _update_status_summary(self, shown_df: pd.DataFrame) -> None:
-        status_menu = self.filter_menus.get("status")
-        active_statuses = (
-            set(status_menu.selected)
-            if status_menu is not None
-            else set(self.status_summary.statuses)
-        )
-        self.status_summary.update(
-            self.full_data_df,
-            shown_df,
-            active_statuses,
-        )
+            menu = self.filter_menus[filter_.name]
+            menu.render_header(self.table_elem, column_labels[filter_.name])
 
     @staticmethod
     def _display_data(data_df: pd.DataFrame) -> pd.DataFrame:

@@ -3,11 +3,16 @@
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Self
 
+import pandas as pd
 from nicegui import ui
 
-from ..backend.filtersbase import StrHierarchySpec, StringRegisteredFilter
+from ..backend.filtersbase import (
+    FilterBase,
+    StrHierarchySpec,
+    StringRegisteredFilter,
+)
 from .uielem import UIElem
 
 
@@ -35,8 +40,38 @@ class StringFilterMenu(UIElem):
         self.selected = set(self.values)
         self.on_change = on_change
         self._updating = False
-        hierarchy = filter_.hierarchy or StrHierarchySpec(hierarchy={})
-        self.nodes = self._build_nodes(hierarchy)
+        self.hierarchy = filter_.hierarchy or StrHierarchySpec(hierarchy={})
+        self.nodes: list[CheckboxNode] = []
+
+    @classmethod
+    def from_filter(cls, filter: FilterBase, *args: Any, **kwargs: Any) -> Self:
+        if isinstance(filter, StringRegisteredFilter):
+            return cls(filter, *args, **kwargs)
+        else:
+            raise NotImplementedError(type(filter).__name__)
+
+    def update_values(self, values: list[str], *, reset: bool = False) -> None:
+        """Update available values, optionally selecting all of them."""
+        self.values = tuple(dict.fromkeys(values))
+        if reset:
+            self.selected = set(self.values)
+        else:
+            self.selected.intersection_update(self.values)
+
+    def update_query(self, data_df: pd.DataFrame) -> None:
+        """Reset choices from this filter's column in newly queried data."""
+        values = sorted(
+            data_df[self.filter.name].dropna().astype(str).unique().tolist()
+        )
+        self.update_values(values, reset=True)
+
+    def render_header(self, table: Any, label: str) -> None:
+        """Render this filter as a dropdown in its table column header."""
+        with table.add_slot(f"header-cell-{self.filter.name}"):
+            with table.header(self.filter.name):
+                with ui.button(label, icon="filter_list").props("flat dense no-caps"):
+                    with ui.menu():
+                        self.build()
 
     def _build_nodes(self, spec: StrHierarchySpec) -> list[CheckboxNode]:
         hierarchy = spec.build_hierarchy(self.values)
@@ -56,7 +91,9 @@ class StringFilterMenu(UIElem):
                     nodes.append(
                         CheckboxNode(
                             parent,
-                            tuple(value for child in children for value in child.values),
+                            tuple(
+                                value for child in children for value in child.values
+                            ),
                             children,
                         )
                     )
@@ -72,18 +109,24 @@ class StringFilterMenu(UIElem):
 
     def render(self) -> None:
         """Create the checkbox hierarchy inside the current menu slot."""
+        self.nodes = self._build_nodes(self.hierarchy)
         with ui.column().classes("gap-1 p-3 min-w-52"):
             for node in self.nodes:
                 self._render_node(node, depth=0)
+        self._sync_checkboxes()
 
     def _render_node(self, node: CheckboxNode, depth: int) -> None:
-        node.checkbox = ui.checkbox(
-            node.label,
-            value=True,
-            on_change=lambda event, current=node: self._toggle_node(
-                current, bool(event.value)
-            ),
-        ).props("dense").classes("py-0.5")
+        node.checkbox = (
+            ui.checkbox(
+                node.label,
+                value=True,
+                on_change=lambda event, current=node: self._toggle_node(
+                    current, bool(event.value)
+                ),
+            )
+            .props("dense")
+            .classes("py-0.5")
+        )
         if depth:
             node.checkbox.style(f"margin-left: {depth * 1.5}rem")
         for child in node.children:
@@ -136,9 +179,7 @@ class StringFilterMenu(UIElem):
         self.on_change()
 
     @classmethod
-    def _walk_nodes(
-        cls, nodes: list[CheckboxNode]
-    ) -> Iterator[CheckboxNode]:
+    def _walk_nodes(cls, nodes: list[CheckboxNode]) -> Iterator[CheckboxNode]:
         for node in nodes:
             yield node
             yield from cls._walk_nodes(node.children)

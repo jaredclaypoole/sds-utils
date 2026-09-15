@@ -5,6 +5,7 @@ from collections.abc import Callable
 import pandas as pd
 from nicegui import ui
 
+from .filters import StringFilterMenu
 from .uielem import UIElem
 
 STATUS_ORDER = (
@@ -90,9 +91,7 @@ class StatusFilterCard(UIElem):
 
     def _classes(self) -> str:
         state_classes = (
-            STATUS_CARD_CLASSES[self.status]
-            if self.active
-            else self.INACTIVE_CLASSES
+            STATUS_CARD_CLASSES[self.status] if self.active else self.INACTIVE_CLASSES
         )
         return f"{self.BASE_CLASSES} {state_classes}"
 
@@ -102,35 +101,52 @@ class StatusSummary(UIElem):
 
     def __init__(
         self,
-        statuses: list[str],
-        on_toggle: Callable[[str, bool], None],
+        status_filter: StringFilterMenu,
     ) -> None:
-        unknown = sorted(set(statuses) - set(STATUS_ORDER))
-        self.statuses = [*STATUS_ORDER, *unknown]
-        self.on_toggle = on_toggle
+        self.status_filter = status_filter
+        self.statuses = list(STATUS_ORDER)
         self.cards: dict[str, StatusFilterCard] = {}
 
     def render(self) -> None:
         """Render cards in the canonical status order."""
-        with ui.row().classes("w-full gap-3 flex-wrap"):
+        self.container = ui.row().classes("w-full gap-3 flex-wrap")
+        self._render_cards()
+
+    def _render_cards(self) -> None:
+        self.cards = {}
+        with self.container:
             for status in self.statuses:
                 self.cards[status] = StatusFilterCard(
                     status,
-                    self.on_toggle,
+                    self.status_filter.set_value_selected,
                 ).build()
+
+    def update_query(self, source_df: pd.DataFrame) -> None:
+        """Reset status choices for newly queried source data."""
+        self._update_statuses(source_df)
+        self.status_filter.update_values(self.statuses, reset=True)
 
     def update(
         self,
         source_df: pd.DataFrame,
         shown_df: pd.DataFrame,
-        active_statuses: set[str],
     ) -> None:
         """Update counts and active state from source and displayed rows."""
+        self._update_statuses(source_df)
+
         total_counts = source_df["status"].value_counts()
         shown_counts = shown_df["status"].value_counts()
         for status, card in self.cards.items():
-            card.set_active(status in active_statuses)
+            card.set_active(status in self.status_filter.selected)
             card.set_count(
                 int(shown_counts.get(status, 0)),
                 int(total_counts.get(status, 0)),
             )
+
+    def _update_statuses(self, source_df: pd.DataFrame) -> None:
+        unknown = sorted(set(source_df["status"].dropna()) - set(STATUS_ORDER))
+        statuses = [*STATUS_ORDER, *unknown]
+        if statuses != self.statuses:
+            self.statuses = statuses
+            self.container.clear()
+            self._render_cards()
