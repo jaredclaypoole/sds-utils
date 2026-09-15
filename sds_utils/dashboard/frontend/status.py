@@ -121,10 +121,22 @@ class StatusSummary(UIElem):
                     self.status_filter.set_value_selected,
                 ).build()
 
-    def update_query(self, source_df: pd.DataFrame) -> None:
-        """Reset status choices for newly queried source data."""
+    def update_query(
+        self,
+        source_df: pd.DataFrame,
+        *,
+        select_new_values: bool,
+    ) -> None:
+        """Update status choices for newly queried source data."""
         self._update_statuses(source_df)
-        self.status_filter.update_values(self.statuses, reset=True)
+        self.status_filter.update_values(
+            self.statuses,
+            select_new_values=select_new_values,
+        )
+        self.status_filter.update_query(
+            source_df,
+            select_new_values=select_new_values,
+        )
 
     def update(
         self,

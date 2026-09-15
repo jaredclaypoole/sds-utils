@@ -39,6 +39,7 @@ class StringFilterMenu(UIElem):
     ) -> None:
         self.filter = filter_
         self.values = tuple(dict.fromkeys(values))
+        self.all_values = list(self.values)
         self.selected = set(self.values)
         self.on_change = on_change
         self._updating = False
@@ -56,20 +57,31 @@ class StringFilterMenu(UIElem):
             return cls(filter_, values, on_change)
         raise NotImplementedError(type(filter_).__name__)
 
-    def update_values(self, values: list[str], *, reset: bool = False) -> None:
-        """Update available values, optionally selecting all of them."""
+    def update_values(
+        self,
+        values: list[str],
+        *,
+        select_new_values: bool,
+    ) -> None:
+        """Update visible values while retaining known selection states."""
         self.values = tuple(dict.fromkeys(values))
-        if reset:
-            self.selected = set(self.values)
-        else:
-            self.selected.intersection_update(self.values)
+        known_values = set(self.all_values)
+        new_values = [value for value in self.values if value not in known_values]
+        self.all_values.extend(new_values)
+        if select_new_values:
+            self.selected.update(new_values)
 
-    def update_query(self, data_df: pd.DataFrame) -> None:
-        """Reset choices from this filter's column in newly queried data."""
+    def update_query(
+        self,
+        data_df: pd.DataFrame,
+        *,
+        select_new_values: bool,
+    ) -> None:
+        """Update visible choices from this filter's column in queried data."""
         values = sorted(
             data_df[self.filter.name].dropna().astype(str).unique().tolist()
         )
-        self.update_values(values, reset=True)
+        self.update_values(values, select_new_values=select_new_values)
 
     def render_header(self, table: Table, label: str) -> None:
         """Render this filter as a dropdown in its table column header."""
@@ -175,7 +187,7 @@ class StringFilterMenu(UIElem):
 
     def set_value_selected(self, value: str, selected: bool) -> None:
         """Select or clear one concrete value and notify the table view."""
-        if value not in self.values:
+        if value not in self.all_values:
             return
         if selected:
             self.selected.add(value)

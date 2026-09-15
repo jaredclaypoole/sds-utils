@@ -51,8 +51,11 @@ class FilteredTableView(FilteredTableViewBase):
         for name, menu in self.filter_menus.items():
             if name == "status":
                 continue
-            menu.update_query(self.full_data_df)
-        self.status_summary.update_query(self.full_data_df)
+            menu.update_query(self.full_data_df, select_new_values=True)
+        self.status_summary.update_query(
+            self.full_data_df,
+            select_new_values=True,
+        )
         self.update_table()
 
     def update_table(self) -> None:
