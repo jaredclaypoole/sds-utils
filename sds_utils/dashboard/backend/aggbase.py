@@ -40,8 +40,11 @@ class Aggregator:
             kwargs: dict[str, int] = statuses.value_counts().to_dict()
             kwargs = {k.replace("-", "_"): v for k, v in kwargs.items()}
             return StatusCounts(**kwargs)
+
         grouped_df = pd.DataFrame(
-            data_df.groupby(cols_to_keep).status.apply(_make_status_counts).rename("status_counts")
+            data_df.groupby(cols_to_keep)
+            .status.apply(_make_status_counts)
+            .rename("status_counts")
         ).reset_index()
 
         if horiz_col is not None:
@@ -55,8 +58,11 @@ class Aggregator:
                 values="status_counts",
                 aggfunc="sum",
             )
-            return snapshot_df
+            return snapshot_df.sort_index(ascending=False)
         else:
-            return grouped_df
-
-
+            return grouped_df.sort_values(
+                "start_date",
+                ascending=False,
+                kind="stable",
+                ignore_index=True,
+            )
