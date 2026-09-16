@@ -15,7 +15,14 @@ from ..backend.filtersbase import (
     StringRegisteredFilter,
 )
 from .filters import StringFilterMenu
-from .status import STATUS_BADGE_COLORS, StatusSummary
+from .status import (
+    SNAPSHOT_TOTAL_CLASS,
+    SNAPSHOT_ZERO_CLASS,
+    STATUS_BADGE_COLORS,
+    StatusSummary,
+    format_status_counts,
+    status_count_columns,
+)
 from .uielem import UIElem
 
 
@@ -108,10 +115,22 @@ class FilteredTableView(FilteredTableViewBase):
         self.update_table()
 
     def _build_table(self, display_df: pd.DataFrame) -> None:
+        status_columns = status_count_columns(display_df)
+        table_df = display_df.copy()
+        for column in status_columns:
+            table_df[column] = format_status_counts(table_df[column])
+
         self.table_elem = ui.table.from_pandas(
-            display_df.reset_index(drop=True),
+            table_df.reset_index(drop=True),
             pagination=25,
         ).classes("w-full shadow-none border rounded-lg")
+        for column in status_columns:
+            for row, value in zip(
+                self.table_elem.rows,
+                table_df[column],
+                strict=True,
+            ):
+                row[column] = value
         self.table_elem.props("flat bordered separator=horizontal wrap-cells")
         self.table_elem.add_slot(
             "body-cell-partition_link",
@@ -139,6 +158,29 @@ class FilteredTableView(FilteredTableViewBase):
             </q-td>
             """,
         )
+        for column in status_columns:
+            self.table_elem.add_slot(
+                f"body-cell-{column}",
+                f"""
+                <q-td :props="props">
+                    <template v-if="Array.isArray(props.value)">
+                        <span :class="props.value[0].class">
+                            {{{{ props.value[0].text }}}}
+                        </span><span class="{SNAPSHOT_TOTAL_CLASS}">: </span>
+                        <template
+                            v-for="(part, index) in props.value.slice(1)"
+                            :key="index"
+                        >
+                            <span
+                                v-if="index"
+                                class="{SNAPSHOT_ZERO_CLASS}"
+                            > / </span>
+                            <span :class="part.class">{{{{ part.text }}}}</span>
+                        </template>
+                    </template>
+                </q-td>
+                """,
+            )
         column_labels = {
             column["name"]: column["label"] for column in self.table_elem.columns
         }
@@ -156,4 +198,7 @@ class FilteredTableView(FilteredTableViewBase):
         display_df = data_df.drop(columns=["asset", "partition"], errors="ignore")
         if any(name is not None for name in display_df.index.names):
             display_df = display_df.reset_index()
+        for column in ("start_date", "end_date"):
+            if column in display_df.columns:
+                display_df[column] = display_df[column].dt.strftime("%Y-%m-%d")
         return display_df

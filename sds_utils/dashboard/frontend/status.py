@@ -5,6 +5,7 @@ from collections.abc import Callable
 import pandas as pd
 from nicegui import ui
 
+from ..backend.status import StatusCounts
 from .filters import StringFilterMenu
 from .uielem import UIElem
 
@@ -43,6 +44,65 @@ SNAPSHOT_STATUS_CLASSES = {
     "not-run": "text-black",
     "not-found": "text-blue-700",
 }
+SNAPSHOT_TOTAL_CLASS = "text-gray-500"
+SNAPSHOT_ZERO_CLASS = "text-gray-300"
+
+
+def status_count_columns(data_df: pd.DataFrame) -> list[str]:
+    """Return columns whose non-null values are all ``StatusCounts`` objects."""
+    columns = []
+    for column in data_df.columns:
+        values = data_df[column].dropna()
+        if (
+            not values.empty
+            and values.map(lambda value: isinstance(value, StatusCounts)).all()
+        ):
+            columns.append(column)
+    return columns
+
+
+def format_status_counts(series: pd.Series) -> pd.Series:
+    """Format a StatusCounts series for colored, position-padded table cells."""
+    counts = [value for value in series.dropna() if isinstance(value, StatusCounts)]
+    widths = [
+        max(
+            (len(str(position_value)) for position_value in position_values),
+            default=1,
+        )
+        for position_values in zip(
+            *((sum(value), *value) for value in counts),
+            strict=True,
+        )
+    ]
+    status_classes = [
+        SNAPSHOT_STATUS_CLASSES[field.replace("_", "-")]
+        for field in StatusCounts._fields
+    ]
+
+    def format_value(value: object) -> list[dict[str, str]] | None:
+        if not isinstance(value, StatusCounts):
+            return None
+        parts = [
+            {
+                "text": f"{sum(value):0{widths[0]}d}",
+                "class": SNAPSHOT_TOTAL_CLASS,
+            }
+        ]
+        parts.extend(
+            {
+                "text": f"{count:0{width}d}",
+                "class": status_class if count else SNAPSHOT_ZERO_CLASS,
+            }
+            for count, width, status_class in zip(
+                value,
+                widths[1:],
+                status_classes,
+                strict=True,
+            )
+        )
+        return parts
+
+    return series.map(format_value)
 
 
 class StatusFilterCard(UIElem):
