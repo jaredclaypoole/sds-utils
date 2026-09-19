@@ -30,4 +30,4 @@ repos:
     hooks:
       - id: mypy
         exclude: .*(tests|docs|test_).*
-        additional_dependencies: [numpy>=2]
+        additional_dependencies: [numpy>=2, "sqlmodel>=0.0.42,<0.0.43"]
