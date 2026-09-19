@@ -1,0 +1,29 @@
+query RunsForIngestion($filter: RunsFilter, $cursor: String, $limit: Int) {
+  runsOrError(filter: $filter, cursor: $cursor, limit: $limit) {
+    __typename
+    ... on Runs {
+      results {
+        runId
+        jobName
+        status
+        creationTime
+        updateTime
+        startTime
+        endTime
+        parentRunId
+        rootRunId
+        assetSelection {
+          path
+        }
+        tags {
+          key
+          value
+        }
+      }
+    }
+    ... on PythonError {
+      message
+      stack
+    }
+  }
+}
