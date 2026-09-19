@@ -29,7 +29,8 @@ classifiers = [
     "Operating System :: MacOS",
 ]
 dependencies = [
-    "imap-data-access (>=1.1.0,<2.0.0)"
+    "imap-data-access (>=1.1.0,<2.0.0)",
+    "sqlmodel (>=0.0.42,<0.0.43)"
 ]
 
 [tool.poetry]
