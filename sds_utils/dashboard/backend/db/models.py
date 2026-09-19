@@ -1,0 +1,139 @@
+"""SQLModel tables for cached Dagster job-run data."""
+
+import datetime
+import hashlib
+import json
+
+from sqlalchemy import JSON, Column, Index, UniqueConstraint
+from sqlmodel import Field, SQLModel
+
+
+def _utc_now() -> datetime.datetime:
+    """Return the current timezone-aware UTC timestamp."""
+    return datetime.datetime.now(datetime.UTC)
+
+
+class DagsterCacheNamespace(SQLModel, table=True):
+    """Identify cached data belonging to one logical Dagster deployment."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)
+    graphql_url: str
+    run_update_watermark_start: datetime.datetime | None = None
+    run_update_watermark_end: datetime.datetime | None = None
+    created_at: datetime.datetime = Field(default_factory=_utc_now)
+    updated_at: datetime.datetime = Field(default_factory=_utc_now)
+
+
+class CachedDagsterRun(SQLModel, table=True):
+    """Cache run-level facts reported by Dagster and event-fetch state."""
+
+    __table_args__ = (
+        UniqueConstraint("namespace_id", "run_id"),
+        Index(
+            "ix_cached_dagster_run_job_partition_creation",
+            "namespace_id",
+            "job_name",
+            "partition",
+            "creation_time",
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    namespace_id: int = Field(
+        foreign_key="dagstercachenamespace.id",
+        index=True,
+    )
+    run_id: str = Field(index=True)
+    job_name: str = Field(index=True)
+    partition: str | None = Field(default=None, index=True)
+    dagster_status: str = Field(index=True)
+    creation_time: datetime.datetime = Field(index=True)
+    update_time: datetime.datetime | None = Field(default=None, index=True)
+    start_time: datetime.datetime | None = None
+    end_time: datetime.datetime | None = None
+    parent_run_id: str | None = Field(default=None, index=True)
+    root_run_id: str | None = Field(default=None, index=True)
+    selected_assets: list[list[str]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
+    tags: dict[str, str] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+
+
+class DerivedJobRun(SQLModel, table=True):
+    """Store dashboard interpretations derived from cached run facts and events."""
+
+    __table_args__ = (UniqueConstraint("cached_run_id"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    cached_run_id: int = Field(
+        foreign_key="cacheddagsterrun.id",
+        index=True,
+    )
+    dashboard_status: str = Field(index=True)
+    n_expected: int | None = None
+    n_materialized: int | None = None
+    n_skipped: int | None = None
+    n_not_materialized: int | None = None
+
+
+class CachedRunEvent(SQLModel, table=True):
+    """Cache selected Dagster events with common fields promoted for queries."""
+
+    __table_args__ = (
+        Index(
+            "ix_cached_run_event_run",
+            "namespace_id",
+            "run_id",
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    namespace_id: int = Field(
+        foreign_key="dagstercachenamespace.id",
+        index=True,
+    )
+    event_key: str = Field(index=True)
+    run_id: str = Field(index=True)
+    event_type: str = Field(index=True)
+    timestamp: datetime.datetime = Field(index=True)
+    step_key: str | None = None
+    asset_key: str | None = Field(default=None, index=True)
+    partition: str | None = Field(default=None, index=True)
+    event_metadata: dict[str, object] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    payload: dict[str, object] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+
+    @classmethod
+    def build_event_key(  # noqa: PLR0913
+        cls,
+        *,
+        run_id: str,
+        event_type: str,
+        timestamp: datetime.datetime,
+        step_key: str | None = None,
+        asset_key: str | None = None,
+        partition: str | None = None,
+    ) -> str:
+        """Build a stable key from the identifying fields of a Dagster event."""
+        key_fields = json.dumps(
+            (
+                run_id,
+                event_type,
+                timestamp.isoformat(),
+                step_key,
+                asset_key,
+                partition,
+            ),
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(key_fields.encode()).hexdigest()
