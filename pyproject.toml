@@ -29,7 +29,9 @@ classifiers = [
     "Operating System :: MacOS",
 ]
 dependencies = [
+    "httpx (>=0.28.1,<0.29.0)",
     "imap-data-access (>=1.1.0,<2.0.0)",
+    "pydantic (>=2.12.0,<3.0.0)",
     "sqlmodel (>=0.0.42,<0.0.43)"
 ]
 
@@ -47,6 +49,9 @@ repository = "https://github.com/IMAP-Science-Operations-Center/sds-utils"
 dev = ["pre-commit>=3.3.3,<4", "ruff==0.15.2", "mypy==1.10.1"]
 doc = ["numpydoc>=1.5.0,<2", "pydata-sphinx-theme", "sphinx", "sphinxcontrib-openapi>=0.8.3,<0.9"]
 test = ["pytest>=6.2.5", "pytest-cov>=4.0.0,<5", "pytest-xdist>=3.2,<4"]
+
+[tool.poetry.group.dev.dependencies]
+ariadne-codegen = "^0.18.0"
 
 
 # Tool settings
@@ -75,7 +80,10 @@ lint.select = ["B", "D", "E", "F", "I", "N", "S", "W", "PL", "PT", "UP", "RUF"]
 lint.ignore = [
   "D104",  # Missing docstring in public package
 ]
-extend-exclude = ["test_*.py"]
+extend-exclude = [
+    "test_*.py",
+    "sds_utils/dashboard/backend/query/graphql_api",
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
@@ -104,4 +112,23 @@ disable_error_code = ['import-not-found', # Unable to locate module or package s
               ]
 strict = true
 explicit_package_bases = true
-exclude = ["test_*"]
+exclude = [
+    "test_*",
+    "sds_utils/dashboard/backend/query/graphql_api/",
+]
+
+[tool.ariadne-codegen]
+remote_schema_url = "${DAGSTER_BASE_URL}/graphql"
+remote_schema_headers = { x-dagster-api-key = "${DAGSTER_API_KEY}" }
+queries_path = "sds_utils/dashboard/backend/query/graphql"
+target_package_name = "graphql_api"
+target_package_path = "sds_utils/dashboard/backend/query"
+client_name = "DagsterGraphQLClient"
+async_client = true
+include_comments = "stable"
+include_all_inputs = false
+include_all_enums = false
+
+[[tool.mypy.overrides]]
+module = "sds_utils.dashboard.backend.query.graphql_api.*"
+ignore_errors = true
