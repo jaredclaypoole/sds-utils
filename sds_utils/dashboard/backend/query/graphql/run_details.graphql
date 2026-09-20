@@ -1,0 +1,105 @@
+fragment LegacySkipEventDetails on ExecutionStepSkippedEvent {
+  runId
+  stepKey
+  timestamp
+  message
+}
+
+fragment MaterializationEventDetails on MaterializationEvent {
+  runId
+  stepKey
+  timestamp
+  partition
+  assetKey {
+    path
+  }
+  metadataEntries {
+    __typename
+    label
+    ... on TextMetadataEntry {
+      text
+    }
+  }
+}
+
+fragment ObservationEventDetails on ObservationEvent {
+  runId
+  stepKey
+  timestamp
+  partition
+  assetKey {
+    path
+  }
+  metadataEntries {
+    __typename
+    label
+    ... on TextMetadataEntry {
+      text
+    }
+  }
+}
+
+query RunDetails($runIds: [String!], $eventLimit: Int!) {
+  runsOrError(filter: {runIds: $runIds}) {
+    __typename
+    ... on Runs {
+      results {
+        runId
+        eventConnection(limit: $eventLimit) {
+          events {
+            __typename
+            ... on ExecutionStepSkippedEvent {
+              ...LegacySkipEventDetails
+            }
+            ... on MaterializationEvent {
+              ...MaterializationEventDetails
+            }
+            ... on ObservationEvent {
+              ...ObservationEventDetails
+            }
+          }
+          cursor
+          hasMore
+        }
+      }
+    }
+    ... on InvalidPipelineRunsFilterError {
+      message
+    }
+    ... on PythonError {
+      message
+      stack
+    }
+  }
+}
+
+query RunDetailsPage($runId: ID!, $cursor: String, $eventLimit: Int!) {
+  runOrError(runId: $runId) {
+    __typename
+    ... on Run {
+      eventConnection(afterCursor: $cursor, limit: $eventLimit) {
+        events {
+          __typename
+          ... on ExecutionStepSkippedEvent {
+            ...LegacySkipEventDetails
+          }
+          ... on MaterializationEvent {
+            ...MaterializationEventDetails
+          }
+          ... on ObservationEvent {
+            ...ObservationEventDetails
+          }
+        }
+        cursor
+        hasMore
+      }
+    }
+    ... on RunNotFoundError {
+      message
+    }
+    ... on PythonError {
+      message
+      stack
+    }
+  }
+}

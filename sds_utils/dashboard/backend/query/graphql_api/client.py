@@ -6,6 +6,8 @@ from typing import Any, Optional, Union
 from .async_base_client import AsyncBaseClient
 from .base_model import UNSET, UnsetType
 from .input_types import RunsFilter
+from .run_details import RunDetails
+from .run_details_page import RunDetailsPage
 from .runs_for_ingestion import RunsForIngestion
 
 
@@ -14,6 +16,186 @@ def gql(q: str) -> str:
 
 
 class DagsterGraphQLClient(AsyncBaseClient):
+    async def run_details(
+        self,
+        event_limit: int,
+        run_ids: Union[Optional[list[str]], UnsetType] = UNSET,
+        **kwargs: Any,
+    ) -> RunDetails:
+        query = gql("""
+            query RunDetails($runIds: [String!], $eventLimit: Int!) {
+              runsOrError(filter: {runIds: $runIds}) {
+                __typename
+                ... on Runs {
+                  results {
+                    runId
+                    eventConnection(limit: $eventLimit) {
+                      events {
+                        __typename
+                        ... on ExecutionStepSkippedEvent {
+                          ...LegacySkipEventDetails
+                        }
+                        ... on MaterializationEvent {
+                          ...MaterializationEventDetails
+                        }
+                        ... on ObservationEvent {
+                          ...ObservationEventDetails
+                        }
+                      }
+                      cursor
+                      hasMore
+                    }
+                  }
+                }
+                ... on InvalidPipelineRunsFilterError {
+                  message
+                }
+                ... on PythonError {
+                  message
+                  stack
+                }
+              }
+            }
+
+            fragment LegacySkipEventDetails on ExecutionStepSkippedEvent {
+              runId
+              stepKey
+              timestamp
+              message
+            }
+
+            fragment MaterializationEventDetails on MaterializationEvent {
+              runId
+              stepKey
+              timestamp
+              partition
+              assetKey {
+                path
+              }
+              metadataEntries {
+                __typename
+                label
+                ... on TextMetadataEntry {
+                  text
+                }
+              }
+            }
+
+            fragment ObservationEventDetails on ObservationEvent {
+              runId
+              stepKey
+              timestamp
+              partition
+              assetKey {
+                path
+              }
+              metadataEntries {
+                __typename
+                label
+                ... on TextMetadataEntry {
+                  text
+                }
+              }
+            }
+            """)
+        variables: dict[str, object] = {"runIds": run_ids, "eventLimit": event_limit}
+        response = await self.execute(
+            query=query, operation_name="RunDetails", variables=variables, **kwargs
+        )
+        data = self.get_data(response)
+        return RunDetails.model_validate(data)
+
+    async def run_details_page(
+        self,
+        run_id: str,
+        event_limit: int,
+        cursor: Union[Optional[str], UnsetType] = UNSET,
+        **kwargs: Any,
+    ) -> RunDetailsPage:
+        query = gql("""
+            query RunDetailsPage($runId: ID!, $cursor: String, $eventLimit: Int!) {
+              runOrError(runId: $runId) {
+                __typename
+                ... on Run {
+                  eventConnection(afterCursor: $cursor, limit: $eventLimit) {
+                    events {
+                      __typename
+                      ... on ExecutionStepSkippedEvent {
+                        ...LegacySkipEventDetails
+                      }
+                      ... on MaterializationEvent {
+                        ...MaterializationEventDetails
+                      }
+                      ... on ObservationEvent {
+                        ...ObservationEventDetails
+                      }
+                    }
+                    cursor
+                    hasMore
+                  }
+                }
+                ... on RunNotFoundError {
+                  message
+                }
+                ... on PythonError {
+                  message
+                  stack
+                }
+              }
+            }
+
+            fragment LegacySkipEventDetails on ExecutionStepSkippedEvent {
+              runId
+              stepKey
+              timestamp
+              message
+            }
+
+            fragment MaterializationEventDetails on MaterializationEvent {
+              runId
+              stepKey
+              timestamp
+              partition
+              assetKey {
+                path
+              }
+              metadataEntries {
+                __typename
+                label
+                ... on TextMetadataEntry {
+                  text
+                }
+              }
+            }
+
+            fragment ObservationEventDetails on ObservationEvent {
+              runId
+              stepKey
+              timestamp
+              partition
+              assetKey {
+                path
+              }
+              metadataEntries {
+                __typename
+                label
+                ... on TextMetadataEntry {
+                  text
+                }
+              }
+            }
+            """)
+        variables: dict[str, object] = {
+            "runId": run_id,
+            "cursor": cursor,
+            "eventLimit": event_limit,
+        }
+        response = await self.execute(
+            query=query, operation_name="RunDetailsPage", variables=variables, **kwargs
+        )
+        data = self.get_data(response)
+        return RunDetailsPage.model_validate(data)
+
     async def runs_for_ingestion(
         self,
         filter_: Union[Optional[RunsFilter], UnsetType] = UNSET,
