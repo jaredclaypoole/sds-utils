@@ -21,6 +21,7 @@ from sds_utils.dashboard.backend.query.graphql_api.runs_for_ingestion import (
 )
 from sds_utils.dashboard.backend.query.run_ingestion import (
     RunIngestionError,
+    _plan_ingestion_ranges,
     ingest_runs,
 )
 
@@ -224,3 +225,28 @@ def test_ingest_runs_rejects_disjoint_range() -> None:
         )
 
     assert client.filters == []
+
+
+def test_plan_ingestion_ranges_limits_end_watermark_to_now() -> None:
+    current_start = datetime.datetime(2026, 8, 10, tzinfo=datetime.UTC)
+    current_end = datetime.datetime(2026, 8, 20, tzinfo=datetime.UTC)
+    now = datetime.datetime(2026, 8, 25, tzinfo=datetime.UTC)
+    namespace = DagsterCacheNamespace(
+        name="default",
+        graphql_url="https://dagster.example/graphql",
+        run_update_watermark_start=current_start,
+        run_update_watermark_end=current_end,
+    )
+
+    ranges, new_start, new_end = _plan_ingestion_ranges(
+        namespace,
+        requested_start=None,
+        requested_end=datetime.datetime(2026, 9, 1, tzinfo=datetime.UTC),
+        overlap_buffer=datetime.timedelta(minutes=5),
+        now=now,
+    )
+
+    assert len(ranges) == 1
+    assert ranges[0].end == now
+    assert new_start == current_start
+    assert new_end == now

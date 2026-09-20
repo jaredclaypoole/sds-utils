@@ -59,9 +59,15 @@ def _plan_ingestion_ranges(
     requested_start: datetime.datetime | None,
     requested_end: datetime.datetime | None,
     overlap_buffer: datetime.timedelta,
+    now: datetime.datetime | None = None,
 ) -> tuple[list[_IngestionRange], datetime.datetime, datetime.datetime]:
     current_start = _database_datetime_as_utc(namespace.run_update_watermark_start)
     current_end = _database_datetime_as_utc(namespace.run_update_watermark_end)
+
+    if now is None:
+        now = datetime.datetime.now(datetime.UTC)
+    if requested_end is not None:
+        requested_end = min(requested_end, now)
 
     if current_start is None and current_end is None:
         if requested_start is None or requested_end is None:
