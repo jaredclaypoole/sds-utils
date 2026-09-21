@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, col, select
 
-from ..db import engine
+from ..db import create_db_and_tables, engine
 from ..db.models import CachedDagsterRun, DagsterCacheNamespace
 from .graphql_api import DagsterGraphQLClient, RunsFilter
 from .graphql_api.runs_for_ingestion import (
@@ -349,8 +349,13 @@ def main() -> None:
     parser.add_argument("--start-date", default="20260914")
     parser.add_argument("--end-date", default="20260922")
     args = parser.parse_args()
-    start_datetime = _as_utc(datetime.datetime.strptime(args.start_date, "%Y%m%d"))
-    end_datetime = _as_utc(datetime.datetime.strptime(args.end_date, "%Y%m%d"))
+    start_datetime = datetime.datetime.strptime(args.start_date, "%Y%m%d").replace(
+        tzinfo=datetime.UTC
+    )
+    end_datetime = datetime.datetime.strptime(args.end_date, "%Y%m%d").replace(
+        tzinfo=datetime.UTC
+    )
+    create_db_and_tables()
     processed = asyncio.run(
         ingest_runs(
             start_datetime=start_datetime,
