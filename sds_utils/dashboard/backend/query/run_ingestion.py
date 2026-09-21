@@ -1,5 +1,7 @@
 """Ingest Dagster run facts into the dashboard cache."""
 
+import argparse
+import asyncio
 import datetime
 import math
 import os
@@ -338,3 +340,26 @@ async def ingest_runs(  # noqa: PLR0913
             await client.http_client.aclose()
 
     return ingested_count
+
+
+def main() -> None:
+    """Ingest Dagster run info from the command line."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--namespace", default="prod")
+    parser.add_argument("--start-date", default="20260914")
+    parser.add_argument("--end-date", default="20260922")
+    args = parser.parse_args()
+    start_datetime = _as_utc(datetime.datetime.strptime(args.start_date, "%Y%m%d"))
+    end_datetime = _as_utc(datetime.datetime.strptime(args.end_date, "%Y%m%d"))
+    processed = asyncio.run(
+        ingest_runs(
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+            namespace_name=args.namespace,
+        )
+    )
+    print(f"Processed {processed} successful runs")
+
+
+if __name__ == "__main__":
+    main()

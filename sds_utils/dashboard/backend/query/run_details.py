@@ -445,7 +445,7 @@ async def ingest_run_details(  # noqa: PLR0913
 def main() -> None:
     """Ingest outstanding successful run details from the command line."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--namespace", default="default")
+    parser.add_argument("--namespace", default="prod")
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     parser.add_argument("--event-page-size", type=int, default=DEFAULT_EVENT_PAGE_SIZE)
     args = parser.parse_args()
