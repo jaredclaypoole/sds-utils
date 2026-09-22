@@ -5,12 +5,14 @@ import asyncio
 import datetime
 import json
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, col, delete, select
+from tqdm.auto import tqdm
 
 from ..db import engine
 from ..db.models import (
@@ -265,6 +267,23 @@ def _pending_successful_runs(
     return list(session.exec(statement))
 
 
+def _pending_successful_run_count(session: Session, *, namespace_id: int) -> int:
+    statement = (
+        select(func.count())
+        .select_from(CachedDagsterRun)
+        .outerjoin(
+            DerivedJobRun,
+            col(DerivedJobRun.cached_run_id) == CachedDagsterRun.id,
+        )
+        .where(
+            CachedDagsterRun.namespace_id == namespace_id,
+            CachedDagsterRun.dagster_status == "SUCCESS",
+            col(DerivedJobRun.id).is_(None),
+        )
+    )
+    return session.exec(statement).one()
+
+
 def _asset_key(asset_path: tuple[str, ...] | None) -> str | None:
     if asset_path is None:
         return None
@@ -360,6 +379,7 @@ def _store_details_batch(
     namespace_id: int,
     runs: list[CachedDagsterRun],
     events_by_run: dict[str, list[_RelevantEvent]],
+    run_stored: Callable[[], None] | None = None,
 ) -> None:
     run_ids = [run.run_id for run in runs]
     session.exec(
@@ -398,6 +418,8 @@ def _store_details_batch(
                     payload=event.payload,
                 )
             )
+        if run_stored is not None:
+            run_stored()
     session.commit()
 
 
@@ -408,6 +430,7 @@ async def ingest_run_details(  # noqa: PLR0913
     batch_size: int = DEFAULT_BATCH_SIZE,
     event_page_size: int = DEFAULT_EVENT_PAGE_SIZE,
     pagination_concurrency: int = DEFAULT_PAGINATION_CONCURRENCY,
+    show_progress: bool = False,
     db_engine: Engine = engine,
     client: DagsterGraphQLClient | None = None,
 ) -> int:
@@ -425,6 +448,13 @@ async def ingest_run_details(  # noqa: PLR0913
             raise RunDetailsError(f"Cache namespace {namespace_name!r} does not exist")
         namespace_id = namespace.id
         graphql_url = namespace.graphql_url
+        pending_count = _pending_successful_run_count(
+            session,
+            namespace_id=namespace_id,
+        )
+
+    if pending_count == 0:
+        return 0
 
     owns_client = client is None
     if client is None:
@@ -435,6 +465,12 @@ async def ingest_run_details(  # noqa: PLR0913
         )
 
     processed_count = 0
+    progress = tqdm(
+        total=pending_count,
+        desc="Ingesting run details",
+        disable=not show_progress,
+        unit="run",
+    )
     try:
         while True:
             with Session(db_engine) as session:
@@ -458,9 +494,11 @@ async def ingest_run_details(  # noqa: PLR0913
                     namespace_id=namespace_id,
                     runs=runs,
                     events_by_run=events_by_run,
+                    run_stored=progress.update,
                 )
                 processed_count += len(runs)
     finally:
+        progress.close()
         if owns_client:
             await client.http_client.aclose()
 
@@ -477,6 +515,7 @@ def main() -> None:
             namespace_name=args.namespace,
             batch_size=args.batch_size,
             event_page_size=args.event_page_size,
+            show_progress=True,
         )
     )
     print(f"Processed {processed} successful runs")

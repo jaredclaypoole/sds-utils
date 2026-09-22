@@ -19,6 +19,7 @@ from sds_utils.dashboard.backend.query.graphql_api import (
 from sds_utils.dashboard.backend.query.graphql_api.runs_for_ingestion import (
     RunsForIngestion,
 )
+from sds_utils.dashboard.backend.query.graphql_api.run_count import RunCount
 from sds_utils.dashboard.backend.query.run_ingestion import (
     RunIngestionError,
     _plan_ingestion_ranges,
@@ -29,10 +30,23 @@ from sds_utils.dashboard.backend.query.run_ingestion import (
 class FakeClient:
     """Return predefined GraphQL responses while recording pagination calls."""
 
-    def __init__(self, responses: list[RunsForIngestion]) -> None:
+    def __init__(
+        self,
+        responses: list[RunsForIngestion],
+        *,
+        run_count: int = 0,
+    ) -> None:
         self.responses = iter(responses)
+        self.run_count_value = run_count
         self.cursors: list[str | None] = []
         self.filters: list[RunsFilter] = []
+        self.count_filters: list[RunsFilter] = []
+
+    async def run_count(self, filter_: RunsFilter) -> RunCount:
+        self.count_filters.append(filter_)
+        return RunCount.model_validate(
+            {"runsOrError": {"__typename": "Runs", "count": self.run_count_value}}
+        )
 
     async def runs_for_ingestion(
         self,
@@ -87,7 +101,10 @@ def test_ingest_runs_pages_upserts_and_sets_watermarks() -> None:
         poolclass=StaticPool,
     )
     SQLModel.metadata.create_all(db_engine)
-    client = FakeClient([_response("run-2"), _response("run-1"), _response()])
+    client = FakeClient(
+        [_response("run-2"), _response("run-1"), _response()],
+        run_count=2,
+    )
     start = datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC)
     end = datetime.datetime(2026, 8, 29, 23, 59, tzinfo=datetime.UTC)
 
@@ -97,12 +114,14 @@ def test_ingest_runs_pages_upserts_and_sets_watermarks() -> None:
             end,
             graphql_url="https://dagster.example/graphql",
             page_size=1,
+            show_progress=True,
             db_engine=db_engine,
             client=cast(DagsterGraphQLClient, client),
         )
     )
 
     assert count == 2
+    assert len(client.count_filters) == 1
     assert client.cursors == [None, "run-2", "run-1"]
     with Session(db_engine) as session:
         namespace = session.exec(select(DagsterCacheNamespace)).one()

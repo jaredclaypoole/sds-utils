@@ -10,12 +10,17 @@ from dataclasses import dataclass
 
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, col, select
+from tqdm.auto import tqdm
 
 from ..db import create_db_and_tables, engine
 from ..db.models import CachedDagsterRun, DagsterCacheNamespace
 from ..jobkey import derive_job_key
 from ..partitions import parse_partition
 from .graphql_api import DagsterGraphQLClient, RunsFilter
+from .graphql_api.run_count import (
+    RunCountRunsOrErrorPythonError,
+    RunCountRunsOrErrorRuns,
+)
 from .graphql_api.runs_for_ingestion import (
     RunsForIngestionRunsOrErrorPythonError,
     RunsForIngestionRunsOrErrorRuns,
@@ -134,6 +139,26 @@ def _timestamp(value: float | None) -> datetime.datetime | None:
     if value is None:
         return None
     return datetime.datetime.fromtimestamp(value, tz=datetime.UTC)
+
+
+async def _count_runs(
+    client: DagsterGraphQLClient,
+    ingestion_range: _IngestionRange,
+) -> int:
+    response = (
+        await client.run_count(
+            filter_=RunsFilter(
+                updatedAfter=_inclusive_after(ingestion_range.start),
+                updatedBefore=_inclusive_before(ingestion_range.end),
+            )
+        )
+    ).runs_or_error
+    if isinstance(response, RunCountRunsOrErrorPythonError):
+        raise RunIngestionError(response.message)
+    if not isinstance(response, RunCountRunsOrErrorRuns):
+        msg = f"Dagster rejected the run-count filter: {response.typename__}"
+        raise RunIngestionError(msg)
+    return response.count
 
 
 async def _iter_runs(
@@ -260,7 +285,7 @@ def _cache_page(
     session.commit()
 
 
-async def ingest_runs(  # noqa: PLR0913
+async def ingest_runs(  # noqa: PLR0912, PLR0913
     start_datetime: datetime.datetime | None,
     end_datetime: datetime.datetime | None,
     *,
@@ -269,6 +294,7 @@ async def ingest_runs(  # noqa: PLR0913
     api_key: str | None = None,
     page_size: int = DEFAULT_PAGE_SIZE,
     overlap_buffer: datetime.timedelta = DEFAULT_OVERLAP_BUFFER,
+    show_progress: bool = False,
     db_engine: Engine = engine,
     client: DagsterGraphQLClient | None = None,
 ) -> int:
@@ -313,6 +339,7 @@ async def ingest_runs(  # noqa: PLR0913
         )
 
     ingested_count = 0
+    progress: tqdm[object] | None = None
     try:
         with Session(db_engine) as session:
             namespace = _get_or_create_namespace(
@@ -330,6 +357,21 @@ async def ingest_runs(  # noqa: PLR0913
                 requested_end=end_datetime,
                 overlap_buffer=overlap_buffer,
             )
+            if ranges:
+                total = None
+                if show_progress:
+                    total = sum(
+                        [
+                            await _count_runs(client, ingestion_range)
+                            for ingestion_range in ranges
+                        ]
+                    )
+                progress = tqdm(
+                    total=total,
+                    desc="Ingesting runs",
+                    disable=not show_progress,
+                    unit="run",
+                )
             for ingestion_range in ranges:
                 async for runs in _iter_runs(
                     client,
@@ -339,6 +381,8 @@ async def ingest_runs(  # noqa: PLR0913
                 ):
                     _cache_page(session, namespace_id=namespace.id, runs=runs)
                     ingested_count += len(runs)
+                    if progress is not None:
+                        progress.update(len(runs))
 
             namespace.run_update_watermark_start = new_start
             namespace.run_update_watermark_end = new_end
@@ -346,6 +390,8 @@ async def ingest_runs(  # noqa: PLR0913
             session.add(namespace)
             session.commit()
     finally:
+        if progress is not None:
+            progress.close()
         if owns_client:
             await client.http_client.aclose()
 
@@ -371,6 +417,7 @@ def main() -> None:
             start_datetime=start_datetime,
             end_datetime=end_datetime,
             namespace_name=args.namespace,
+            show_progress=True,
         )
     )
     print(f"Processed {processed} successful runs")
