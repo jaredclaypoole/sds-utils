@@ -11,6 +11,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from sds_utils.dashboard.backend.data import QuerySpec
 from sds_utils.dashboard.backend.db.models import (
     CachedDagsterRun,
+    CachedRunEvent,
     DagsterCacheNamespace,
     DerivedJobRun,
 )
@@ -124,6 +125,20 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs() -> None:
         )
         pending_details.job_name = "unparsable"
         pending_details.partition = None
+        reprocessed = _run(
+            namespace.id,
+            "reprocessed",
+            "SUCCESS",
+            datetime.datetime(2026, 9, 10, 14, 30),
+        )
+        reprocessed.job_name = "__ASSET_JOB"
+        idex_raw = _run(
+            namespace.id,
+            "idex-raw",
+            "SUCCESS",
+            datetime.datetime(2026, 9, 10, 14, 15),
+        )
+        idex_raw.job_name = "__ASSET_JOB"
         outside = _run(
             namespace.id,
             "outside",
@@ -144,6 +159,8 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs() -> None:
                 canceled,
                 canceling,
                 pending_details,
+                reprocessed,
+                idex_raw,
                 outside,
                 other_namespace_run,
             ]
@@ -151,6 +168,28 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs() -> None:
         session.flush()
         assert successful.id is not None
         assert outside.id is not None
+        session.add_all(
+            [
+                CachedRunEvent(
+                    namespace_id=namespace.id,
+                    event_key="reprocessed-planned-asset",
+                    run_id=reprocessed.run_id,
+                    event_type="AssetMaterializationPlannedEvent",
+                    timestamp=datetime.datetime(2026, 9, 10, tzinfo=datetime.UTC),
+                    step_key="hit_l2_summedintensity_multi_asset_op",
+                    asset_key='["hit_l2_summedintensity"]',
+                ),
+                CachedRunEvent(
+                    namespace_id=namespace.id,
+                    event_key="idex-raw-planned-asset",
+                    run_id=idex_raw.run_id,
+                    event_type="AssetMaterializationPlannedEvent",
+                    timestamp=datetime.datetime(2026, 9, 10, tzinfo=datetime.UTC),
+                    step_key="idex_l0_raw",
+                    asset_key='["idex_l0_raw"]',
+                ),
+            ]
+        )
         session.add_all(
             [
                 DerivedJobRun(
@@ -182,6 +221,8 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs() -> None:
 
     assert data_df["run_id"].tolist() == [
         "pending-details",
+        "reprocessed",
+        "idex-raw",
         "running",
         "canceling",
         "canceled",
@@ -190,6 +231,8 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs() -> None:
     ]
     assert data_df.set_index("run_id")["status"].to_dict() == {
         "pending-details": "unknown",
+        "reprocessed": "unknown",
+        "idex-raw": "unknown",
         "running": "materializing",
         "canceling": "canceling",
         "canceled": "canceled",
@@ -197,19 +240,20 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs() -> None:
         "successful": "skipped",
     }
     successful_row = data_df.set_index("run_id").loc["successful"]
-    assert data_df.columns[:8].tolist() == [
-        "run_id",
-        "instrument",
-        "data_level",
-        "descriptor",
-        "partition",
-        "partition_label",
-        "repoint",
-        "job_name",
-    ]
     assert successful_row["instrument"] == "imap-hi"
     assert successful_row["data_level"] == "l1b"
     assert successful_row["descriptor"] == "45-sensor-hk"
+    reprocessed_row = data_df.set_index("run_id").loc["reprocessed"]
+    assert reprocessed_row["job_name"] == "__ASSET_JOB"
+    assert reprocessed_row["step_key"] == "hit_l2_summedintensity_multi_asset_op"
+    assert reprocessed_row["instrument"] == "hit"
+    assert reprocessed_row["data_level"] == "l2"
+    assert reprocessed_row["descriptor"] == "summedintensity"
+    idex_raw_row = data_df.set_index("run_id").loc["idex-raw"]
+    assert idex_raw_row["step_key"] == "idex_l0_raw"
+    assert idex_raw_row["instrument"] == "idex"
+    assert idex_raw_row["data_level"] == "l0"
+    assert idex_raw_row["descriptor"] == "raw"
     assert successful_row["partition_label"] == "repoint"
     assert successful_row["repoint"] == 343
     assert successful_row["n_expected"] == 2

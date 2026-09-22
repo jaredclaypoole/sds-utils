@@ -8,7 +8,12 @@ from sqlalchemy import Engine
 from sqlmodel import Session, col, select
 
 from .data import DataSourceBase, QuerySpec
-from .db.models import CachedDagsterRun, DagsterCacheNamespace, DerivedJobRun
+from .db.models import (
+    CachedDagsterRun,
+    CachedRunEvent,
+    DagsterCacheNamespace,
+    DerivedJobRun,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +37,11 @@ _JOB_NAME_PATTERN = (
     r"^(?P<instrument>[^_]+)_"
     r"(?P<data_level>[^_]+)_"
     r"(?P<descriptor>[^_]+)_.+$"
+)
+_STEP_KEY_PATTERN = (
+    r"^(?P<instrument>[^_]+)_"
+    r"(?P<data_level>[^_]+)_"
+    r"(?P<descriptor>[^_]+)(?:_.+)?$"
 )
 _PARTITION_PATTERN = (
     r"^(?P<partition_spec>.+)_"
@@ -147,6 +157,36 @@ class DBDataSource(DataSourceBase):
         )
         with Session(self.engine) as session:
             results = list(session.exec(statement))
+            planned_steps = list(
+                session.exec(
+                    select(CachedRunEvent.run_id, CachedRunEvent.step_key)
+                    .join(
+                        CachedDagsterRun,
+                        (
+                            col(CachedRunEvent.namespace_id)
+                            == CachedDagsterRun.namespace_id
+                        )
+                        & (col(CachedRunEvent.run_id) == CachedDagsterRun.run_id),
+                    )
+                    .join(
+                        DagsterCacheNamespace,
+                        col(CachedDagsterRun.namespace_id) == DagsterCacheNamespace.id,
+                    )
+                    .where(
+                        DagsterCacheNamespace.name == self.namespace,
+                        col(CachedDagsterRun.update_time) >= start_time,
+                        col(CachedDagsterRun.update_time) <= end_time,
+                        CachedRunEvent.event_type == "AssetMaterializationPlannedEvent",
+                        col(CachedRunEvent.step_key).is_not(None),
+                    )
+                    .distinct()
+                )
+            )
+
+        steps_by_run: dict[str, set[str]] = {}
+        for run_id, step_key in planned_steps:
+            if step_key is not None:
+                steps_by_run.setdefault(run_id, set()).add(step_key)
 
         records: list[dict[str, object]] = []
         for run, derived in results:
@@ -158,6 +198,9 @@ class DBDataSource(DataSourceBase):
                     "data_level": None,
                     "descriptor": None,
                     "job_name": run.job_name,
+                    "step_key": next(iter(steps_by_run[run.run_id]))
+                    if len(steps_by_run.get(run.run_id, ())) == 1
+                    else None,
                     "partition": run.partition,
                     "partition_label": None,
                     "repoint": None,
@@ -194,10 +237,14 @@ class DBDataSource(DataSourceBase):
                 }
             )
 
+        if not records:
+            return pd.DataFrame()
+
         data_df = pd.DataFrame.from_records(records)
         job_parts = data_df["job_name"].str.extract(_JOB_NAME_PATTERN)
+        step_parts = data_df["step_key"].str.extract(_STEP_KEY_PATTERN)
         for column in ("instrument", "data_level", "descriptor"):
-            data_df[column] = job_parts[column]
+            data_df[column] = job_parts[column].fillna(step_parts[column])
 
         partition_parts = data_df["partition"].str.extract(_PARTITION_PATTERN)
         partition_spec = partition_parts["partition_spec"]
