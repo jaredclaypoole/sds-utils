@@ -40,6 +40,7 @@ class QuerySpec(BaseModel):
     start_time: datetime.datetime
     end_time: datetime.datetime
     date_mode: Literal["update_time", "partition"] = "update_time"
+    version_mode: Literal["all", "latest"] = "all"
 
 
 class DataSourceBase:

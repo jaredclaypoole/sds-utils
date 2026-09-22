@@ -4,7 +4,7 @@ import datetime
 import logging
 
 import pandas as pd
-from sqlalchemy import Engine
+from sqlalchemy import Engine, func
 from sqlmodel import Session, col, select
 
 from .data import DataSourceBase, QuerySpec
@@ -149,6 +149,44 @@ class DBDataSource(DataSourceBase):
             statement = statement.where(
                 col(CachedDagsterRun.partition_start_time) <= end_time,
                 col(CachedDagsterRun.partition_end_time) >= start_time,
+            )
+        if query.version_mode == "latest":
+            ranked_runs = (
+                select(
+                    CachedDagsterRun.id.label("cached_run_id"),
+                    func.row_number()
+                    .over(
+                        partition_by=(
+                            col(CachedDagsterRun.job_key),
+                            col(CachedDagsterRun.partition),
+                        ),
+                        order_by=col(CachedDagsterRun.update_time).desc(),
+                    )
+                    .label("version_rank"),
+                )
+                .join(
+                    DagsterCacheNamespace,
+                    col(CachedDagsterRun.namespace_id)
+                    == DagsterCacheNamespace.id,
+                )
+                .where(DagsterCacheNamespace.name == self.namespace)
+            )
+            if query.date_mode == "update_time":
+                ranked_runs = ranked_runs.where(
+                    col(CachedDagsterRun.update_time) >= start_time,
+                    col(CachedDagsterRun.update_time) <= end_time,
+                )
+            else:
+                ranked_runs = ranked_runs.where(
+                    col(CachedDagsterRun.partition_start_time) <= end_time,
+                    col(CachedDagsterRun.partition_end_time) >= start_time,
+                )
+            ranked_runs_subquery = ranked_runs.subquery()
+            latest_run_ids = select(ranked_runs_subquery.c.cached_run_id).where(
+                ranked_runs_subquery.c.version_rank == 1
+            )
+            statement = statement.where(
+                col(CachedDagsterRun.id).in_(latest_run_ids)
             )
         with Session(self.engine) as session:
             results = list(session.exec(statement))

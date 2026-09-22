@@ -292,6 +292,21 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs(
     assert str(data_df["creation_time"].dtype) == "datetime64[ns, UTC]"
     assert str(data_df["start_date"].dtype) == "datetime64[ns, UTC]"
 
+    latest_df = DBDataSource(db_engine, "default").query(
+        QuerySpec(
+            start_time=datetime.datetime(2026, 9, 10, tzinfo=datetime.UTC),
+            end_time=datetime.datetime(2026, 9, 11, tzinfo=datetime.UTC),
+            version_mode="latest",
+        )
+    )
+    assert latest_df["run_id"].tolist() == [
+        "pending-details",
+        "reprocessed",
+        "idex-raw",
+        "running",
+        "failed",
+    ]
+
     partition_df = DBDataSource(db_engine, "default").query(
         QuerySpec(
             start_time=datetime.datetime(2026, 9, 5, 12, tzinfo=datetime.UTC),
