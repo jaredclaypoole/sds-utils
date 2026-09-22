@@ -13,7 +13,7 @@ from .db.models import (
     DagsterCacheNamespace,
     DerivedJobRun,
 )
-from .jobkey import derive_job_key
+from .jobkey import parse_job_key
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ class DBDataSource(DataSourceBase):
         records: list[dict[str, object]] = []
         for run, derived in results:
             skip_info, skip_reason, missing_files = _skip_columns(derived)
-            job_key = derive_job_key(run.job_name, run.selected_assets)
+            job_key = parse_job_key(run.job_key)
             records.append(
                 {
                     "run_id": run.run_id,

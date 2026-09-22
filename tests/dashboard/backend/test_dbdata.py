@@ -39,6 +39,7 @@ def _run(
         namespace_id=namespace_id,
         run_id=run_id,
         job_name="imap-hi_l1b_45-sensor-hk_processing_job",
+        job_key="imap-hi_l1b_45-sensor-hk",
         partition=("repoint343_2026-09-05T00:00:00+00:00_to_2026-09-06T23:59:59+00:00"),
         dagster_status=status,
         creation_time=creation_time,
@@ -63,16 +64,7 @@ def test_unknown_dagster_status_is_unknown(
 
 
 def test_query_builds_dashboard_dataframe_from_relevant_runs(
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        "sds_utils.dashboard.backend.jobkey._job_outputs_for_instrument",
-        lambda instrument: (
-            {frozenset({"hit_l2_summedintensity"}): ("l2", "summedintensity")}
-            if instrument == "hit"
-            else {}
-        ),
-    )
     db_engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -133,6 +125,7 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs(
             datetime.datetime(2026, 9, 10, 15),
         )
         pending_details.job_name = "unparsable"
+        pending_details.job_key = None
         pending_details.partition = None
         reprocessed = _run(
             namespace.id,
@@ -141,6 +134,7 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs(
             datetime.datetime(2026, 9, 10, 14, 30),
         )
         reprocessed.job_name = "__ASSET_JOB"
+        reprocessed.job_key = "hit_l2_summedintensity"
         reprocessed.selected_assets = [["hit_l2_summedintensity"]]
         idex_raw = _run(
             namespace.id,
@@ -149,6 +143,7 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs(
             datetime.datetime(2026, 9, 10, 14, 15),
         )
         idex_raw.job_name = "__ASSET_JOB"
+        idex_raw.job_key = "idex_l0"
         idex_raw.selected_assets = [["idex_l0_raw"]]
         outside = _run(
             namespace.id,

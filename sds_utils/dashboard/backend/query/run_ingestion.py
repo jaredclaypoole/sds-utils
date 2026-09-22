@@ -13,6 +13,7 @@ from sqlmodel import Session, col, select
 
 from ..db import create_db_and_tables, engine
 from ..db.models import CachedDagsterRun, DagsterCacheNamespace
+from ..jobkey import derive_job_key
 from .graphql_api import DagsterGraphQLClient, RunsFilter
 from .graphql_api.runs_for_ingestion import (
     RunsForIngestionRunsOrErrorPythonError,
@@ -244,7 +245,9 @@ def _cache_page(
         cached.end_time = _timestamp(run.end_time)
         cached.parent_run_id = run.parent_run_id
         cached.root_run_id = run.root_run_id
-        cached.selected_assets = [asset.path for asset in (run.asset_selection or [])]
+        selected_assets = [asset.path for asset in (run.asset_selection or [])]
+        cached.selected_assets = selected_assets
+        cached.job_key = derive_job_key(run.job_name, selected_assets).job_key
         cached.tags = tags
 
     session.commit()

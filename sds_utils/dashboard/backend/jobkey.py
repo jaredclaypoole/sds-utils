@@ -108,6 +108,19 @@ def derive_job_key(
     return _derive_from_assets(selected_assets)
 
 
+def parse_job_key(job_key: str | None) -> JobKeyParts:
+    """Split a stored job key into its dashboard identity fields."""
+    if job_key is None:
+        return JobKeyParts(None, None, None, None)
+    match job_key.split("_", 2):
+        case [instrument, data_level]:
+            return JobKeyParts(job_key, instrument, data_level, None)
+        case [instrument, data_level, descriptor]:
+            return JobKeyParts(job_key, instrument, data_level, descriptor)
+        case _:
+            return JobKeyParts(job_key, None, None, None)
+
+
 def _derive_from_assets(selected_assets: list[list[str]]) -> JobKeyParts:
     if not selected_assets:
         return JobKeyParts(None, None, None, None)

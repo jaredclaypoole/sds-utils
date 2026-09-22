@@ -54,7 +54,7 @@ def _response(*run_ids: str) -> RunsForIngestion:
                 "results": [
                     {
                         "runId": run_id,
-                        "jobName": "example_job",
+                        "jobName": "imap-hi_l1b_45-sensor-hk_processing_job",
                         "status": "SUCCESS",
                         "creationTime": 1_700_000_000.0,
                         "updateTime": 1_700_000_100.0,
@@ -104,6 +104,7 @@ def test_ingest_runs_pages_upserts_and_sets_watermarks() -> None:
     assert namespace.run_update_watermark_end == end.replace(tzinfo=None)
     assert {run.run_id for run in runs} == {"run-1", "run-2"}
     assert all(run.partition == "2026-09-19" for run in runs)
+    assert all(run.job_key == "imap-hi_l1b_45-sensor-hk" for run in runs)
     assert all(run.selected_assets == [["example", "asset"]] for run in runs)
 
 

@@ -46,6 +46,7 @@ class CachedDagsterRun(SQLModel, table=True):
     )
     run_id: str = Field(index=True)
     job_name: str = Field(index=True)
+    job_key: str | None = Field(index=True, default=None)
     partition: str | None = Field(default=None, index=True)
     dagster_status: str = Field(index=True)
     creation_time: datetime.datetime = Field(index=True)
