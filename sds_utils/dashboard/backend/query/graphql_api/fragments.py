@@ -15,19 +15,6 @@ class LegacySkipEventDetails(BaseModel):
     message: str
 
 
-class PlannedMaterializationEventDetails(BaseModel):
-    run_id: str = Field(alias="runId")
-    step_key: Optional[str] = Field(alias="stepKey")
-    timestamp: str
-    asset_key: Optional["PlannedMaterializationEventDetailsAssetKey"] = Field(
-        alias="assetKey"
-    )
-
-
-class PlannedMaterializationEventDetailsAssetKey(BaseModel):
-    path: list[str]
-
-
 class MaterializationEventDetails(BaseModel):
     run_id: str = Field(alias="runId")
     step_key: Optional[str] = Field(alias="stepKey")
@@ -134,7 +121,20 @@ class ObservationEventDetailsMetadataEntriesTextMetadataEntry(BaseModel):
     text: str
 
 
+class PlannedMaterializationEventDetails(BaseModel):
+    run_id: str = Field(alias="runId")
+    step_key: Optional[str] = Field(alias="stepKey")
+    timestamp: str
+    asset_key: Optional["PlannedMaterializationEventDetailsAssetKey"] = Field(
+        alias="assetKey"
+    )
+
+
+class PlannedMaterializationEventDetailsAssetKey(BaseModel):
+    path: list[str]
+
+
 LegacySkipEventDetails.model_rebuild()
-PlannedMaterializationEventDetails.model_rebuild()
 MaterializationEventDetails.model_rebuild()
 ObservationEventDetails.model_rebuild()
+PlannedMaterializationEventDetails.model_rebuild()

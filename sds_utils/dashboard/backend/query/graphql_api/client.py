@@ -6,6 +6,7 @@ from typing import Any, Optional, Union
 from .async_base_client import AsyncBaseClient
 from .base_model import UNSET, UnsetType
 from .input_types import RunsFilter
+from .run_count import RunCount
 from .run_details import RunDetails
 from .run_details_page import RunDetailsPage
 from .runs_for_ingestion import RunsForIngestion
@@ -16,6 +17,30 @@ def gql(q: str) -> str:
 
 
 class DagsterGraphQLClient(AsyncBaseClient):
+    async def run_count(
+        self, filter_: Union[Optional[RunsFilter], UnsetType] = UNSET, **kwargs: Any
+    ) -> RunCount:
+        query = gql("""
+            query RunCount($filter: RunsFilter) {
+              runsOrError(filter: $filter) {
+                __typename
+                ... on Runs {
+                  count
+                }
+                ... on PythonError {
+                  message
+                  stack
+                }
+              }
+            }
+            """)
+        variables: dict[str, object] = {"filter": filter_}
+        response = await self.execute(
+            query=query, operation_name="RunCount", variables=variables, **kwargs
+        )
+        data = self.get_data(response)
+        return RunCount.model_validate(data)
+
     async def run_details(
         self,
         event_limit: int,
@@ -67,15 +92,6 @@ class DagsterGraphQLClient(AsyncBaseClient):
               message
             }
 
-            fragment PlannedMaterializationEventDetails on AssetMaterializationPlannedEvent {
-              runId
-              stepKey
-              timestamp
-              assetKey {
-                path
-              }
-            }
-
             fragment MaterializationEventDetails on MaterializationEvent {
               runId
               stepKey
@@ -107,6 +123,15 @@ class DagsterGraphQLClient(AsyncBaseClient):
                 ... on TextMetadataEntry {
                   text
                 }
+              }
+            }
+
+            fragment PlannedMaterializationEventDetails on AssetMaterializationPlannedEvent {
+              runId
+              stepKey
+              timestamp
+              assetKey {
+                path
               }
             }
             """)
@@ -166,15 +191,6 @@ class DagsterGraphQLClient(AsyncBaseClient):
               message
             }
 
-            fragment PlannedMaterializationEventDetails on AssetMaterializationPlannedEvent {
-              runId
-              stepKey
-              timestamp
-              assetKey {
-                path
-              }
-            }
-
             fragment MaterializationEventDetails on MaterializationEvent {
               runId
               stepKey
@@ -206,6 +222,15 @@ class DagsterGraphQLClient(AsyncBaseClient):
                 ... on TextMetadataEntry {
                   text
                 }
+              }
+            }
+
+            fragment PlannedMaterializationEventDetails on AssetMaterializationPlannedEvent {
+              runId
+              stepKey
+              timestamp
+              assetKey {
+                path
               }
             }
             """)

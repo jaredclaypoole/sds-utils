@@ -1,0 +1,12 @@
+query RunCount($filter: RunsFilter) {
+  runsOrError(filter: $filter) {
+    __typename
+    ... on Runs {
+      count
+    }
+    ... on PythonError {
+      message
+      stack
+    }
+  }
+}

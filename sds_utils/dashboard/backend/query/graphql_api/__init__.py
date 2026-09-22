@@ -25,6 +25,12 @@ from .fragments import (
     PlannedMaterializationEventDetailsAssetKey,
 )
 from .input_types import ExecutionTag, RunsFilter
+from .run_count import (
+    RunCount,
+    RunCountRunsOrErrorInvalidPipelineRunsFilterError,
+    RunCountRunsOrErrorPythonError,
+    RunCountRunsOrErrorRuns,
+)
 from .run_details import (
     RunDetails,
     RunDetailsRunsOrErrorInvalidPipelineRunsFilterError,
@@ -153,6 +159,10 @@ __all__ = [
     "ObservationEventDetailsMetadataEntriesTextMetadataEntry",
     "PlannedMaterializationEventDetails",
     "PlannedMaterializationEventDetailsAssetKey",
+    "RunCount",
+    "RunCountRunsOrErrorInvalidPipelineRunsFilterError",
+    "RunCountRunsOrErrorPythonError",
+    "RunCountRunsOrErrorRuns",
     "RunDetails",
     "RunDetailsPage",
     "RunDetailsPageRunOrErrorPythonError",
