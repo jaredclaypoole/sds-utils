@@ -35,6 +35,9 @@ class DagsterGraphQLClient(AsyncBaseClient):
                         ... on ExecutionStepSkippedEvent {
                           ...LegacySkipEventDetails
                         }
+                        ... on AssetMaterializationPlannedEvent {
+                          ...PlannedMaterializationEventDetails
+                        }
                         ... on MaterializationEvent {
                           ...MaterializationEventDetails
                         }
@@ -62,6 +65,15 @@ class DagsterGraphQLClient(AsyncBaseClient):
               stepKey
               timestamp
               message
+            }
+
+            fragment PlannedMaterializationEventDetails on AssetMaterializationPlannedEvent {
+              runId
+              stepKey
+              timestamp
+              assetKey {
+                path
+              }
             }
 
             fragment MaterializationEventDetails on MaterializationEvent {
@@ -123,6 +135,9 @@ class DagsterGraphQLClient(AsyncBaseClient):
                       ... on ExecutionStepSkippedEvent {
                         ...LegacySkipEventDetails
                       }
+                      ... on AssetMaterializationPlannedEvent {
+                        ...PlannedMaterializationEventDetails
+                      }
                       ... on MaterializationEvent {
                         ...MaterializationEventDetails
                       }
@@ -149,6 +164,15 @@ class DagsterGraphQLClient(AsyncBaseClient):
               stepKey
               timestamp
               message
+            }
+
+            fragment PlannedMaterializationEventDetails on AssetMaterializationPlannedEvent {
+              runId
+              stepKey
+              timestamp
+              assetKey {
+                path
+              }
             }
 
             fragment MaterializationEventDetails on MaterializationEvent {

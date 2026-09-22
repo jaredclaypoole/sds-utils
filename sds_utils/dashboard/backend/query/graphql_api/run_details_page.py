@@ -10,6 +10,7 @@ from .fragments import (
     LegacySkipEventDetails,
     MaterializationEventDetails,
     ObservationEventDetails,
+    PlannedMaterializationEventDetails,
 )
 
 
@@ -268,7 +269,7 @@ class RunDetailsPageRunOrErrorRunEventConnectionEventsAlertFailureEvent(BaseMode
 
 
 class RunDetailsPageRunOrErrorRunEventConnectionEventsAssetMaterializationPlannedEvent(
-    BaseModel
+    PlannedMaterializationEventDetails
 ):
     typename__: Literal["AssetMaterializationPlannedEvent"] = Field(alias="__typename")
 

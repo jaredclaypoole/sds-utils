@@ -5,6 +5,15 @@ fragment LegacySkipEventDetails on ExecutionStepSkippedEvent {
   message
 }
 
+fragment PlannedMaterializationEventDetails on AssetMaterializationPlannedEvent {
+  runId
+  stepKey
+  timestamp
+  assetKey {
+    path
+  }
+}
+
 fragment MaterializationEventDetails on MaterializationEvent {
   runId
   stepKey
@@ -51,6 +60,9 @@ query RunDetails($runIds: [String!], $eventLimit: Int!) {
             ... on ExecutionStepSkippedEvent {
               ...LegacySkipEventDetails
             }
+            ... on AssetMaterializationPlannedEvent {
+              ...PlannedMaterializationEventDetails
+            }
             ... on MaterializationEvent {
               ...MaterializationEventDetails
             }
@@ -82,6 +94,9 @@ query RunDetailsPage($runId: ID!, $cursor: String, $eventLimit: Int!) {
           __typename
           ... on ExecutionStepSkippedEvent {
             ...LegacySkipEventDetails
+          }
+          ... on AssetMaterializationPlannedEvent {
+            ...PlannedMaterializationEventDetails
           }
           ... on MaterializationEvent {
             ...MaterializationEventDetails

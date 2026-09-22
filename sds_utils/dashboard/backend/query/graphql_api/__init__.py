@@ -21,6 +21,8 @@ from .fragments import (
     ObservationEventDetailsAssetKey,
     ObservationEventDetailsMetadataEntriesMetadataEntry,
     ObservationEventDetailsMetadataEntriesTextMetadataEntry,
+    PlannedMaterializationEventDetails,
+    PlannedMaterializationEventDetailsAssetKey,
 )
 from .input_types import ExecutionTag, RunsFilter
 from .run_details import (
@@ -149,6 +151,8 @@ __all__ = [
     "ObservationEventDetailsAssetKey",
     "ObservationEventDetailsMetadataEntriesMetadataEntry",
     "ObservationEventDetailsMetadataEntriesTextMetadataEntry",
+    "PlannedMaterializationEventDetails",
+    "PlannedMaterializationEventDetailsAssetKey",
     "RunDetails",
     "RunDetailsPage",
     "RunDetailsPageRunOrErrorPythonError",
