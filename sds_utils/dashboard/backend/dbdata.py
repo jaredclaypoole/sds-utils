@@ -161,16 +161,24 @@ class DBDataSource(DataSourceBase):
                     "partition": run.partition,
                     "partition_label": None,
                     "repoint": None,
-                    "status": _status(run, derived),
-                    "dagster_status": run.dagster_status,
-                    "creation_time": run.creation_time,
-                    "update_time": run.update_time,
                     "start_time": None,
                     "end_time": None,
-                    "run_start_time": run.start_time,
-                    "run_end_time": run.end_time,
+                    "status": _status(run, derived),
+                    "dagster_status": run.dagster_status,
                     "start_date": None,
                     "end_date": None,
+                    "n_expected": derived.n_expected if derived is not None else None,
+                    "n_materialized": (
+                        derived.n_materialized if derived is not None else None
+                    ),
+                    "n_skipped": derived.n_skipped if derived is not None else None,
+                    "n_explicitly_skipped": (
+                        derived.n_explicitly_skipped if derived is not None else None
+                    ),
+                    "creation_time": run.creation_time,
+                    "update_time": run.update_time,
+                    "run_start_time": run.start_time,
+                    "run_end_time": run.end_time,
                     "duration_seconds": (
                         (run.end_time - run.start_time).total_seconds()
                         if run.start_time is not None and run.end_time is not None
@@ -180,21 +188,13 @@ class DBDataSource(DataSourceBase):
                     "root_run_id": run.root_run_id,
                     "selected_assets": run.selected_assets,
                     "tags": run.tags,
-                    "n_expected": derived.n_expected if derived is not None else None,
-                    "n_materialized": (
-                        derived.n_materialized if derived is not None else None
-                    ),
-                    "n_skipped": derived.n_skipped if derived is not None else None,
-                    "n_explicitly_skipped": (
-                        derived.n_explicitly_skipped if derived is not None else None
-                    ),
                     "skip_info": skip_info,
                     "skip_reason": skip_reason,
                     "missing_files": missing_files,
                 }
             )
 
-        data_df = pd.DataFrame.from_records(records, columns=_COLUMNS)
+        data_df = pd.DataFrame.from_records(records)
         job_parts = data_df["job_name"].str.extract(_JOB_NAME_PATTERN)
         for column in ("instrument", "data_level", "descriptor"):
             data_df[column] = job_parts[column]

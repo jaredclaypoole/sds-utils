@@ -195,7 +195,11 @@ class FilteredTableView(FilteredTableViewBase):
 
     @staticmethod
     def _display_data(data_df: pd.DataFrame) -> pd.DataFrame:
-        display_df = data_df.drop(columns=["asset", "partition"], errors="ignore")
+        display_df = data_df.drop(
+            columns=["asset", "partition", "job_name"], errors="ignore"
+        )
+        if "run_id" in display_df.columns:
+            display_df["run_id"] = display_df["run_id"].str[:8]
         if any(name is not None for name in display_df.index.names):
             display_df = display_df.reset_index()
         for column in ("start_date", "end_date"):
