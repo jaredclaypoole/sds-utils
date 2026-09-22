@@ -37,8 +37,9 @@ class FilteredTableViewBase(UIElem):
 
 
 class FilteredTableView(FilteredTableViewBase):
-    def __init__(self, table: FilteredTable) -> None:
+    def __init__(self, table: FilteredTable, *, dagster_url: str) -> None:
         self.table = table
+        self.dagster_url = dagster_url.rstrip("/")
         self.agg_preset = AggPreset.RAW
 
     def render(self) -> None:
@@ -132,6 +133,21 @@ class FilteredTableView(FilteredTableViewBase):
             ):
                 row[column] = value
         self.table_elem.props("flat bordered separator=horizontal wrap-cells")
+        if "run_id" in table_df.columns:
+            dagster_url = json.dumps(self.dagster_url)
+            self.table_elem.add_slot(
+                "body-cell-run_id",
+                f"""
+                <q-td :props="props">
+                    <a
+                        :href='{dagster_url} + "/runs/" + props.value'
+                        class="text-blue-8"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >{{{{ props.value.slice(0, 8) }}}}</a>
+                </q-td>
+                """,
+            )
         self.table_elem.add_slot(
             "body-cell-partition_link",
             """
@@ -198,8 +214,6 @@ class FilteredTableView(FilteredTableViewBase):
         display_df = data_df.drop(
             columns=["asset", "partition", "job_name"], errors="ignore"
         )
-        if "run_id" in display_df.columns:
-            display_df["run_id"] = display_df["run_id"].str[:8]
         if any(name is not None for name in display_df.index.names):
             display_df = display_df.reset_index()
         for column in ("start_date", "end_date"):

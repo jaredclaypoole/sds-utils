@@ -1,3 +1,5 @@
+import os
+
 from nicegui import ui
 
 from ..backend.db import engine
@@ -14,7 +16,10 @@ class TableApp(UIElem):
             dagster_namespace="prod",
         )
         table = FilteredTable(data_source)
-        self.table_view = FilteredTableView(table).build()
+        self.table_view = FilteredTableView(
+            table,
+            dagster_url=os.environ["DAGSTER_BASE_URL"],
+        ).build()
 
 
 def render() -> None:
