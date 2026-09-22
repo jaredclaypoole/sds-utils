@@ -14,6 +14,7 @@ from .db.models import (
     DagsterCacheNamespace,
     DerivedJobRun,
 )
+from .jobkey import derive_job_key
 
 logger = logging.getLogger(__name__)
 
@@ -32,16 +33,6 @@ _COUNT_COLUMNS = (
     "n_materialized",
     "n_skipped",
     "n_explicitly_skipped",
-)
-_JOB_NAME_PATTERN = (
-    r"^(?P<instrument>[^_]+)_"
-    r"(?P<data_level>[^_]+)_"
-    r"(?P<descriptor>[^_]+)_.+$"
-)
-_STEP_KEY_PATTERN = (
-    r"^(?P<instrument>[^_]+)_"
-    r"(?P<data_level>[^_]+)_"
-    r"(?P<descriptor>[^_]+)(?:_.+)?$"
 )
 _PARTITION_PATTERN = (
     r"^(?P<partition_spec>.+)_"
@@ -64,6 +55,7 @@ _COLUMNS = (
     "instrument",
     "data_level",
     "descriptor",
+    "job_key",
     "partition",
     "partition_label",
     "repoint",
@@ -191,12 +183,14 @@ class DBDataSource(DataSourceBase):
         records: list[dict[str, object]] = []
         for run, derived in results:
             skip_info, skip_reason, missing_files = _skip_columns(derived)
+            job_key = derive_job_key(run.job_name, run.selected_assets)
             records.append(
                 {
                     "run_id": run.run_id,
-                    "instrument": None,
-                    "data_level": None,
-                    "descriptor": None,
+                    "instrument": job_key.instrument,
+                    "data_level": job_key.data_level,
+                    "descriptor": job_key.descriptor,
+                    "job_key": job_key.job_key,
                     "job_name": run.job_name,
                     "step_key": next(iter(steps_by_run[run.run_id]))
                     if len(steps_by_run.get(run.run_id, ())) == 1
@@ -241,11 +235,6 @@ class DBDataSource(DataSourceBase):
             return pd.DataFrame()
 
         data_df = pd.DataFrame.from_records(records)
-        job_parts = data_df["job_name"].str.extract(_JOB_NAME_PATTERN)
-        step_parts = data_df["step_key"].str.extract(_STEP_KEY_PATTERN)
-        for column in ("instrument", "data_level", "descriptor"):
-            data_df[column] = job_parts[column].fillna(step_parts[column])
-
         partition_parts = data_df["partition"].str.extract(_PARTITION_PATTERN)
         partition_spec = partition_parts["partition_spec"]
         repoint = partition_spec.str.extract(r"^repoint(?P<repoint>\d*)$")["repoint"]

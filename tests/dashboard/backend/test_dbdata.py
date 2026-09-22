@@ -63,7 +63,17 @@ def test_unknown_dagster_status_is_unknown(
     assert "future-status-run" in caplog.text
 
 
-def test_query_builds_dashboard_dataframe_from_relevant_runs() -> None:
+def test_query_builds_dashboard_dataframe_from_relevant_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "sds_utils.dashboard.backend.jobkey._job_outputs_for_instrument",
+        lambda instrument: (
+            {frozenset({"hit_l2_summedintensity"}): ("l2", "summedintensity")}
+            if instrument == "hit"
+            else {}
+        ),
+    )
     db_engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -132,6 +142,7 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs() -> None:
             datetime.datetime(2026, 9, 10, 14, 30),
         )
         reprocessed.job_name = "__ASSET_JOB"
+        reprocessed.selected_assets = [["hit_l2_summedintensity"]]
         idex_raw = _run(
             namespace.id,
             "idex-raw",
@@ -139,6 +150,7 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs() -> None:
             datetime.datetime(2026, 9, 10, 14, 15),
         )
         idex_raw.job_name = "__ASSET_JOB"
+        idex_raw.selected_assets = [["idex_l0_raw"]]
         outside = _run(
             namespace.id,
             "outside",
@@ -243,17 +255,20 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs() -> None:
     assert successful_row["instrument"] == "imap-hi"
     assert successful_row["data_level"] == "l1b"
     assert successful_row["descriptor"] == "45-sensor-hk"
+    assert successful_row["job_key"] == "imap-hi_l1b_45-sensor-hk"
     reprocessed_row = data_df.set_index("run_id").loc["reprocessed"]
     assert reprocessed_row["job_name"] == "__ASSET_JOB"
     assert reprocessed_row["step_key"] == "hit_l2_summedintensity_multi_asset_op"
     assert reprocessed_row["instrument"] == "hit"
     assert reprocessed_row["data_level"] == "l2"
     assert reprocessed_row["descriptor"] == "summedintensity"
+    assert reprocessed_row["job_key"] == "hit_l2_summedintensity"
     idex_raw_row = data_df.set_index("run_id").loc["idex-raw"]
     assert idex_raw_row["step_key"] == "idex_l0_raw"
     assert idex_raw_row["instrument"] == "idex"
     assert idex_raw_row["data_level"] == "l0"
-    assert idex_raw_row["descriptor"] == "raw"
+    assert pd.isna(idex_raw_row["descriptor"])
+    assert idex_raw_row["job_key"] == "idex_l0"
     assert successful_row["partition_label"] == "repoint"
     assert successful_row["repoint"] == 343
     assert successful_row["n_expected"] == 2
