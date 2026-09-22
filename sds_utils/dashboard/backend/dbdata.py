@@ -10,7 +10,6 @@ from sqlmodel import Session, col, select
 from .data import DataSourceBase, QuerySpec
 from .db.models import (
     CachedDagsterRun,
-    CachedRunEvent,
     DagsterCacheNamespace,
     DerivedJobRun,
 )
@@ -149,36 +148,6 @@ class DBDataSource(DataSourceBase):
         )
         with Session(self.engine) as session:
             results = list(session.exec(statement))
-            planned_steps = list(
-                session.exec(
-                    select(CachedRunEvent.run_id, CachedRunEvent.step_key)
-                    .join(
-                        CachedDagsterRun,
-                        (
-                            col(CachedRunEvent.namespace_id)
-                            == CachedDagsterRun.namespace_id
-                        )
-                        & (col(CachedRunEvent.run_id) == CachedDagsterRun.run_id),
-                    )
-                    .join(
-                        DagsterCacheNamespace,
-                        col(CachedDagsterRun.namespace_id) == DagsterCacheNamespace.id,
-                    )
-                    .where(
-                        DagsterCacheNamespace.name == self.namespace,
-                        col(CachedDagsterRun.update_time) >= start_time,
-                        col(CachedDagsterRun.update_time) <= end_time,
-                        CachedRunEvent.event_type == "AssetMaterializationPlannedEvent",
-                        col(CachedRunEvent.step_key).is_not(None),
-                    )
-                    .distinct()
-                )
-            )
-
-        steps_by_run: dict[str, set[str]] = {}
-        for run_id, step_key in planned_steps:
-            if step_key is not None:
-                steps_by_run.setdefault(run_id, set()).add(step_key)
 
         records: list[dict[str, object]] = []
         for run, derived in results:
@@ -192,9 +161,6 @@ class DBDataSource(DataSourceBase):
                     "descriptor": job_key.descriptor,
                     "job_key": job_key.job_key,
                     "job_name": run.job_name,
-                    "step_key": next(iter(steps_by_run[run.run_id]))
-                    if len(steps_by_run.get(run.run_id, ())) == 1
-                    else None,
                     "partition": run.partition,
                     "partition_label": None,
                     "repoint": None,

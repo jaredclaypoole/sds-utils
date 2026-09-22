@@ -11,7 +11,6 @@ from sqlmodel import Session, SQLModel, create_engine
 from sds_utils.dashboard.backend.data import QuerySpec
 from sds_utils.dashboard.backend.db.models import (
     CachedDagsterRun,
-    CachedRunEvent,
     DagsterCacheNamespace,
     DerivedJobRun,
 )
@@ -182,28 +181,6 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs(
         assert outside.id is not None
         session.add_all(
             [
-                CachedRunEvent(
-                    namespace_id=namespace.id,
-                    event_key="reprocessed-planned-asset",
-                    run_id=reprocessed.run_id,
-                    event_type="AssetMaterializationPlannedEvent",
-                    timestamp=datetime.datetime(2026, 9, 10, tzinfo=datetime.UTC),
-                    step_key="hit_l2_summedintensity_multi_asset_op",
-                    asset_key='["hit_l2_summedintensity"]',
-                ),
-                CachedRunEvent(
-                    namespace_id=namespace.id,
-                    event_key="idex-raw-planned-asset",
-                    run_id=idex_raw.run_id,
-                    event_type="AssetMaterializationPlannedEvent",
-                    timestamp=datetime.datetime(2026, 9, 10, tzinfo=datetime.UTC),
-                    step_key="idex_l0_raw",
-                    asset_key='["idex_l0_raw"]',
-                ),
-            ]
-        )
-        session.add_all(
-            [
                 DerivedJobRun(
                     cached_run_id=successful.id,
                     dashboard_status="skipped",
@@ -258,13 +235,11 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs(
     assert successful_row["job_key"] == "imap-hi_l1b_45-sensor-hk"
     reprocessed_row = data_df.set_index("run_id").loc["reprocessed"]
     assert reprocessed_row["job_name"] == "__ASSET_JOB"
-    assert reprocessed_row["step_key"] == "hit_l2_summedintensity_multi_asset_op"
     assert reprocessed_row["instrument"] == "hit"
     assert reprocessed_row["data_level"] == "l2"
     assert reprocessed_row["descriptor"] == "summedintensity"
     assert reprocessed_row["job_key"] == "hit_l2_summedintensity"
     idex_raw_row = data_df.set_index("run_id").loc["idex-raw"]
-    assert idex_raw_row["step_key"] == "idex_l0_raw"
     assert idex_raw_row["instrument"] == "idex"
     assert idex_raw_row["data_level"] == "l0"
     assert pd.isna(idex_raw_row["descriptor"])
