@@ -63,7 +63,15 @@ def _response(*run_ids: str) -> RunsForIngestion:
                         "parentRunId": None,
                         "rootRunId": None,
                         "assetSelection": [{"path": ["example", "asset"]}],
-                        "tags": [{"key": "dagster/partition", "value": "2026-09-19"}],
+                        "tags": [
+                            {
+                                "key": "dagster/partition",
+                                "value": (
+                                    "science_2026-09-19T00:00:00+00:00_to_"
+                                    "2026-09-20T00:00:00+00:00"
+                                ),
+                            }
+                        ],
                     }
                     for run_id in run_ids
                 ],
@@ -103,7 +111,11 @@ def test_ingest_runs_pages_upserts_and_sets_watermarks() -> None:
     assert namespace.run_update_watermark_start == start.replace(tzinfo=None)
     assert namespace.run_update_watermark_end == end.replace(tzinfo=None)
     assert {run.run_id for run in runs} == {"run-1", "run-2"}
-    assert all(run.partition == "2026-09-19" for run in runs)
+    assert all(run.partition_start_time == datetime.datetime(2026, 9, 19) for run in runs)
+    assert all(run.partition_end_time == datetime.datetime(2026, 9, 20) for run in runs)
+    assert all(run.partition_prefix == "science" for run in runs)
+    assert all(run.partition_label == "science" for run in runs)
+    assert all(run.repoint is None for run in runs)
     assert all(run.job_key == "imap-hi_l1b_45-sensor-hk" for run in runs)
     assert all(run.selected_assets == [["example", "asset"]] for run in runs)
 

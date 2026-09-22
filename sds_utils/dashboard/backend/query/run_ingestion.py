@@ -14,6 +14,7 @@ from sqlmodel import Session, col, select
 from ..db import create_db_and_tables, engine
 from ..db.models import CachedDagsterRun, DagsterCacheNamespace
 from ..jobkey import derive_job_key
+from ..partitions import parse_partition
 from .graphql_api import DagsterGraphQLClient, RunsFilter
 from .graphql_api.runs_for_ingestion import (
     RunsForIngestionRunsOrErrorPythonError,
@@ -235,6 +236,12 @@ def _cache_page(
 
         cached.job_name = run.job_name
         cached.partition = tags.get(DAGSTER_PARTITION_TAG)
+        partition = parse_partition(cached.partition)
+        cached.partition_prefix = partition.prefix
+        cached.partition_label = partition.label
+        cached.repoint = partition.repoint
+        cached.partition_start_time = partition.start_time
+        cached.partition_end_time = partition.end_time
         cached.dagster_status = run.status.value
         cached.creation_time = datetime.datetime.fromtimestamp(
             run.creation_time,

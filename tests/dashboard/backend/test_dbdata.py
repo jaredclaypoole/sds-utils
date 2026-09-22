@@ -35,12 +35,21 @@ def _run(
     update_time: datetime.datetime,
 ) -> CachedDagsterRun:
     creation_time = update_time - datetime.timedelta(days=30)
+    partition_start_time = datetime.datetime(2026, 9, 5, tzinfo=datetime.UTC)
+    partition_end_time = datetime.datetime(
+        2026, 9, 6, 23, 59, 59, tzinfo=datetime.UTC
+    )
     return CachedDagsterRun(
         namespace_id=namespace_id,
         run_id=run_id,
         job_name="imap-hi_l1b_45-sensor-hk_processing_job",
         job_key="imap-hi_l1b_45-sensor-hk",
         partition=("repoint343_2026-09-05T00:00:00+00:00_to_2026-09-06T23:59:59+00:00"),
+        partition_prefix="repoint343",
+        partition_label="repoint",
+        repoint=343,
+        partition_start_time=partition_start_time,
+        partition_end_time=partition_end_time,
         dagster_status=status,
         creation_time=creation_time,
         update_time=update_time,
@@ -100,6 +109,13 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs(
         failed.partition = (
             "long-label_2026-09-07T00:00:00+00:00_to_2026-09-08T00:00:00+00:00"
         )
+        failed.partition_prefix = "long-label"
+        failed.partition_label = "long-label"
+        failed.repoint = None
+        failed.partition_start_time = datetime.datetime(
+            2026, 9, 7, tzinfo=datetime.UTC
+        )
+        failed.partition_end_time = datetime.datetime(2026, 9, 8, tzinfo=datetime.UTC)
         running = _run(
             namespace.id,
             "running",
@@ -127,6 +143,11 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs(
         pending_details.job_name = "unparsable"
         pending_details.job_key = None
         pending_details.partition = None
+        pending_details.partition_prefix = None
+        pending_details.partition_label = None
+        pending_details.repoint = None
+        pending_details.partition_start_time = None
+        pending_details.partition_end_time = None
         reprocessed = _run(
             namespace.id,
             "reprocessed",
@@ -270,6 +291,23 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs(
     assert data_df["n_expected"].dtype == pd.Int64Dtype()
     assert str(data_df["creation_time"].dtype) == "datetime64[ns, UTC]"
     assert str(data_df["start_date"].dtype) == "datetime64[ns, UTC]"
+
+    partition_df = DBDataSource(db_engine, "default").query(
+        QuerySpec(
+            start_time=datetime.datetime(2026, 9, 5, 12, tzinfo=datetime.UTC),
+            end_time=datetime.datetime(2026, 9, 5, 12, tzinfo=datetime.UTC),
+            date_mode="partition",
+        )
+    )
+    assert set(partition_df["run_id"]) == {
+        "successful",
+        "running",
+        "canceled",
+        "canceling",
+        "reprocessed",
+        "idex-raw",
+        "outside",
+    }
 
     missing_namespace_df = DBDataSource(db_engine, "missing").query(
         QuerySpec(

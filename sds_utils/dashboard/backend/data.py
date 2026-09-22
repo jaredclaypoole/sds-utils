@@ -1,4 +1,5 @@
 import datetime
+from typing import Literal
 
 import pandas as pd
 import pandera.pandas as pa
@@ -38,6 +39,7 @@ class DataSchema(pa.DataFrameModel):
 class QuerySpec(BaseModel):
     start_time: datetime.datetime
     end_time: datetime.datetime
+    date_mode: Literal["update_time", "partition"] = "update_time"
 
 
 class DataSourceBase:

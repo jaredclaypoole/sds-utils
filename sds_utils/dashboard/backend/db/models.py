@@ -48,6 +48,11 @@ class CachedDagsterRun(SQLModel, table=True):
     job_name: str = Field(index=True)
     job_key: str | None = Field(index=True, default=None)
     partition: str | None = Field(default=None, index=True)
+    partition_prefix: str | None = None
+    partition_label: str | None = None
+    repoint: int | None = None
+    partition_start_time: datetime.datetime | None = Field(default=None, index=True)
+    partition_end_time: datetime.datetime | None = Field(default=None, index=True)
     dagster_status: str = Field(index=True)
     creation_time: datetime.datetime = Field(index=True)
     update_time: datetime.datetime | None = Field(default=None, index=True)

@@ -33,11 +33,6 @@ _COUNT_COLUMNS = (
     "n_skipped",
     "n_explicitly_skipped",
 )
-_PARTITION_PATTERN = (
-    r"^(?P<partition_spec>.+)_"
-    r"(?P<start_time>\d{4}-\d{2}-\d{2}T[^_]+)_to_"
-    r"(?P<end_time>\d{4}-\d{2}-\d{2}T.+)$"
-)
 _DAGSTER_STATUS_MAP = {
     "QUEUED": "materializing",
     "NOT_STARTED": "materializing",
@@ -56,6 +51,7 @@ _COLUMNS = (
     "descriptor",
     "job_key",
     "partition",
+    "partition_prefix",
     "partition_label",
     "repoint",
     "job_name",
@@ -123,7 +119,7 @@ class DBDataSource(DataSourceBase):
         self.namespace = dagster_namespace
 
     def query(self, query: QuerySpec) -> pd.DataFrame:
-        """Return dashboard-ready runs updated within the requested UTC window."""
+        """Return runs selected by update time or overlapping partition interval."""
         start_time = _utc_naive(query.start_time)
         end_time = _utc_naive(query.end_time)
         if start_time > end_time:
@@ -141,11 +137,19 @@ class DBDataSource(DataSourceBase):
             )
             .where(
                 DagsterCacheNamespace.name == self.namespace,
-                col(CachedDagsterRun.update_time) >= start_time,
-                col(CachedDagsterRun.update_time) <= end_time,
             )
             .order_by(col(CachedDagsterRun.update_time).desc())
         )
+        if query.date_mode == "update_time":
+            statement = statement.where(
+                col(CachedDagsterRun.update_time) >= start_time,
+                col(CachedDagsterRun.update_time) <= end_time,
+            )
+        else:
+            statement = statement.where(
+                col(CachedDagsterRun.partition_start_time) <= end_time,
+                col(CachedDagsterRun.partition_end_time) >= start_time,
+            )
         with Session(self.engine) as session:
             results = list(session.exec(statement))
 
@@ -162,10 +166,11 @@ class DBDataSource(DataSourceBase):
                     "job_key": job_key.job_key,
                     "job_name": run.job_name,
                     "partition": run.partition,
-                    "partition_label": None,
-                    "repoint": None,
-                    "start_time": None,
-                    "end_time": None,
+                    "partition_prefix": run.partition_prefix,
+                    "partition_label": run.partition_label,
+                    "repoint": run.repoint,
+                    "start_time": run.partition_start_time,
+                    "end_time": run.partition_end_time,
                     "status": _status(run, derived),
                     "dagster_status": run.dagster_status,
                     "start_date": None,
@@ -201,30 +206,11 @@ class DBDataSource(DataSourceBase):
             return pd.DataFrame()
 
         data_df = pd.DataFrame.from_records(records)
-        partition_parts = data_df["partition"].str.extract(_PARTITION_PATTERN)
-        partition_spec = partition_parts["partition_spec"]
-        repoint = partition_spec.str.extract(r"^repoint(?P<repoint>\d*)$")["repoint"]
-        is_repoint = repoint.notna()
-        data_df["partition_label"] = partition_spec.where(
-            ~is_repoint,
-            "repoint",
-        )
-        data_df["repoint"] = pd.to_numeric(
-            repoint.where(repoint != ""),
-            errors="coerce",
-        ).astype("Int64")
-        data_df["start_time"] = pd.to_datetime(
-            partition_parts["start_time"],
-            utc=True,
-        )
-        data_df["end_time"] = pd.to_datetime(
-            partition_parts["end_time"],
-            utc=True,
-        )
-        data_df["start_date"] = data_df["start_time"].dt.normalize()
-        data_df["end_date"] = data_df["end_time"].dt.normalize()
+        data_df["repoint"] = data_df["repoint"].astype("Int64")
         for column in _DATETIME_COLUMNS:
             data_df[column] = pd.to_datetime(data_df[column], utc=True)
+        data_df["start_date"] = data_df["start_time"].dt.normalize()
+        data_df["end_date"] = data_df["end_time"].dt.normalize()
         for column in _COUNT_COLUMNS:
             data_df[column] = data_df[column].astype("Int64")
         return data_df
