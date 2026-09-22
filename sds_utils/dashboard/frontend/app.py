@@ -1,6 +1,7 @@
 from nicegui import ui
 
-from ..backend.csvdata import CSVDataSource
+from ..backend.db import engine
+from ..backend.dbdata import DBDataSource
 from ..backend.filteredtable import FilteredTable
 from .filteredtableview import FilteredTableView
 from .uielem import UIElem
@@ -8,7 +9,10 @@ from .uielem import UIElem
 
 class TableApp(UIElem):
     def render(self) -> None:
-        data_source = CSVDataSource()
+        data_source = DBDataSource(
+            engine=engine,
+            dagster_namespace="prod",
+        )
         table = FilteredTable(data_source)
         self.table_view = FilteredTableView(table).build()
 

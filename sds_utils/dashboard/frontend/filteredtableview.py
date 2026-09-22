@@ -63,7 +63,7 @@ class FilteredTableView(FilteredTableViewBase):
         self.table_container = ui.column().classes("w-full")
         query = QuerySpec(
             start_time=datetime.datetime(2026, 8, 1),
-            end_time=datetime.datetime(2026, 8, 30) - datetime.timedelta(seconds=1),
+            end_time=datetime.datetime(2026, 9, 30) - datetime.timedelta(seconds=1),
         )
         self.update_query(query)
 

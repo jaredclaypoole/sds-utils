@@ -5,43 +5,43 @@ from collections.abc import Callable
 import pandas as pd
 from nicegui import ui
 
-from ..backend.status import StatusCounts
+from ..backend.status import STATUS_ORDER, StatusCounts
 from .filters import StringFilterMenu
 from .uielem import UIElem
-
-STATUS_ORDER = (
-    "materialized",
-    "materializing",
-    "failed",
-    "skipped",
-    "not-run",
-    "not-found",
-)
 
 STATUS_CARD_CLASSES = {
     "materialized": "border-green-400 bg-green-50 text-green-900",
     "materializing": "border-violet-400 bg-violet-50 text-violet-900",
+    "canceling": "border-orange-400 bg-orange-50 text-orange-900",
+    "canceled": "border-gray-400 bg-gray-100 text-gray-900",
     "failed": "border-red-400 bg-red-50 text-red-900",
     "skipped": "border-amber-400 bg-amber-50 text-amber-900",
     "not-run": "border-slate-400 bg-slate-100 text-slate-900",
+    "unknown": "border-cyan-400 bg-cyan-50 text-cyan-900",
     "not-found": "border-blue-400 bg-blue-50 text-blue-900",
 }
 
 STATUS_BADGE_COLORS = {
     "materialized": "positive",
     "materializing": "info",
+    "canceling": "orange",
+    "canceled": "grey-6",
     "failed": "negative",
     "skipped": "warning",
     "not-run": "grey-7",
+    "unknown": "cyan-8",
     "not-found": "deep-purple",
 }
 
 SNAPSHOT_STATUS_CLASSES = {
     "materialized": "text-green-700",
     "materializing": "text-violet-700",
+    "canceling": "text-orange-600",
+    "canceled": "text-gray-600",
     "failed": "text-red-600",
     "skipped": "text-yellow-600",
     "not-run": "text-black",
+    "unknown": "text-cyan-700",
     "not-found": "text-blue-700",
 }
 SNAPSHOT_TOTAL_CLASS = "text-gray-500"
