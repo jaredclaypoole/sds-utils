@@ -52,8 +52,20 @@ class FakeDetailsClient:
 
     @staticmethod
     def _events(run_id: str) -> list[dict[str, object]]:
+        if run_id in {"planned-only-run", "planned-overrides-selection-run"}:
+            return [
+                {
+                    "__typename": "AssetMaterializationPlannedEvent",
+                    "runId": run_id,
+                    "stepKey": "step-planned-asset",
+                    "timestamp": "1788307199000",
+                    "assetKey": {"path": ["planned-asset"]},
+                }
+            ]
         if run_id in {"materialized-run", "partial-run"}:
-            assets = ("asset-a", "asset-b") if run_id == "materialized-run" else ("asset-a",)
+            assets = (
+                ("asset-a", "asset-b") if run_id == "materialized-run" else ("asset-a",)
+            )
             return [
                 {
                     "__typename": "MaterializationEvent",
@@ -146,6 +158,11 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
             namespace.id,
             "different-skip-info-run",
         )
+        planned_only_run = _cached_run(namespace.id, "planned-only-run")
+        planned_only_run.selected_assets = []
+        planned_overrides_selection_run = _cached_run(
+            namespace.id, "planned-overrides-selection-run"
+        )
         failed_run = _cached_run(namespace.id, "failed-run", status="FAILURE")
         previously_derived_run = _cached_run(namespace.id, "already-derived-run")
         session.add_all(
@@ -155,6 +172,8 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
                 skipped_run,
                 legacy_skipped_run,
                 different_skip_info_run,
+                planned_only_run,
+                planned_overrides_selection_run,
                 failed_run,
                 previously_derived_run,
             ]
@@ -177,7 +196,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
         )
     )
 
-    assert processed == 5
+    assert processed == 7
     assert len(client.requested_run_ids) == 1
     assert set(client.requested_run_ids[0]) == {
         "materialized-run",
@@ -185,6 +204,8 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
         "skipped-run",
         "legacy-skipped-run",
         "different-skip-info-run",
+        "planned-only-run",
+        "planned-overrides-selection-run",
     }
     with Session(db_engine) as session:
         cached_runs = {
@@ -231,27 +252,40 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
         "skip_reason": "Skipped because a legacy SkipReason was returned"
     }
 
-    different_skip_info = derived_runs[
-        cached_runs["different-skip-info-run"].id
-    ]
+    different_skip_info = derived_runs[cached_runs["different-skip-info-run"].id]
     assert different_skip_info.n_explicitly_skipped == 2
     assert different_skip_info.skip_info is None
 
-    assert len(events) == 8
+    planned_only = derived_runs[cached_runs["planned-only-run"].id]
+    assert planned_only.dashboard_status == "skipped"
+    assert planned_only.n_expected == 1
+    assert planned_only.n_materialized == 0
+    assert planned_only.n_skipped == 1
+    assert planned_only.n_explicitly_skipped == 0
+
+    planned_override = derived_runs[cached_runs["planned-overrides-selection-run"].id]
+    assert planned_override.dashboard_status == "skipped"
+    assert planned_override.n_expected == 1
+    assert planned_override.n_skipped == 1
+
+    assert len(events) == 10
+    planned_event = next(
+        event
+        for event in events
+        if event.event_type == "AssetMaterializationPlannedEvent"
+    )
+    assert planned_event.asset_key == '["planned-asset"]'
     skipped_events = [
         event
         for event in events
         if event.run_id == "skipped-run" and event.event_type == "ObservationEvent"
     ]
     assert all(
-        event.event_metadata["status"]
-        == "Skipped - Missing dependencies"
+        event.event_metadata["status"] == "Skipped - Missing dependencies"
         for event in skipped_events
     )
     legacy_skip = next(
-        event
-        for event in events
-        if event.event_type == "ExecutionStepSkippedEvent"
+        event for event in events if event.event_type == "ExecutionStepSkippedEvent"
     )
     assert legacy_skip.payload["skip_reason"] == (
         "Skipped because a legacy SkipReason was returned"

@@ -26,12 +26,17 @@ from .graphql_api.fragments import (
     MaterializationEventDetailsMetadataEntriesTextMetadataEntry,
     ObservationEventDetails,
     ObservationEventDetailsMetadataEntriesTextMetadataEntry,
+    PlannedMaterializationEventDetails,
 )
 
 DEFAULT_BATCH_SIZE = 25
 DEFAULT_EVENT_PAGE_SIZE = 500
 DEFAULT_PAGINATION_CONCURRENCY = 5
-RELEVANT_EVENT_TYPES = ("MaterializationEvent", "ObservationEvent")
+RELEVANT_EVENT_TYPES = (
+    "AssetMaterializationPlannedEvent",
+    "MaterializationEvent",
+    "ObservationEvent",
+)
 LEGACY_SKIP_EVENT_TYPE = "ExecutionStepSkippedEvent"
 
 
@@ -63,10 +68,19 @@ def _event_timestamp(value: str) -> datetime.datetime:
 
 def _normalize_event(
     event: LegacySkipEventDetails
+    | PlannedMaterializationEventDetails
     | MaterializationEventDetails
     | ObservationEventDetails,
 ) -> _RelevantEvent:
-    if isinstance(event, LegacySkipEventDetails):
+    if isinstance(event, PlannedMaterializationEventDetails):
+        event_type = "AssetMaterializationPlannedEvent"
+        asset_path = (
+            tuple(event.asset_key.path) if event.asset_key is not None else None
+        )
+        partition = None
+        metadata = {}
+        skip_reason = None
+    elif isinstance(event, LegacySkipEventDetails):
         event_type = LEGACY_SKIP_EVENT_TYPE
         asset_path = None
         partition = None
@@ -133,6 +147,7 @@ def _normalize_events(events: Sequence[BaseModel]) -> list[_RelevantEvent]:
             event,
             (
                 LegacySkipEventDetails,
+                PlannedMaterializationEventDetails,
                 MaterializationEventDetails,
                 ObservationEventDetails,
             ),
@@ -305,7 +320,15 @@ def _derive_run(
         for event in events
         if event.event_type == "ObservationEvent" and event.asset_path is not None
     }
-    expected_assets = selected_assets or materialized_assets | observed_assets
+    planned_assets = {
+        event.asset_path
+        for event in events
+        if event.event_type == "AssetMaterializationPlannedEvent"
+        and event.asset_path is not None
+    }
+    expected_assets = (
+        planned_assets or selected_assets or materialized_assets | observed_assets
+    )
     n_expected = len(expected_assets)
     n_materialized = len(materialized_assets & expected_assets)
     n_skipped = n_expected - n_materialized
