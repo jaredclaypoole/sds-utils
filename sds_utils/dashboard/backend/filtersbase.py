@@ -121,9 +121,9 @@ class StringRegisteredFilter(RegisteredFilter):
             column = property_holder["property"].filter_name
             mask = np.ones(len(data_df), dtype=bool)
             if included_values_regex is not None:
-                mask &= data_df[column].str.fullmatch(included_values_regex)
+                mask &= data_df[column].str.fullmatch(included_values_regex, na=False)
             if excluded_values_regex is not None:
-                mask &= ~data_df[column].str.fullmatch(excluded_values_regex)
+                mask &= ~data_df[column].str.fullmatch(excluded_values_regex, na=False)
             return data_df[mask]
 
         property_ = FilterProperty(
@@ -140,9 +140,7 @@ FilterDecorator = Callable[[FilterFunction], FilterProperty[RegisteredFilter]]
 
 
 @overload
-def filter_property(
-    _func: FilterFunction, /
-) -> FilterProperty[RegisteredFilter]: ...
+def filter_property(_func: FilterFunction, /) -> FilterProperty[RegisteredFilter]: ...
 
 
 @overload
