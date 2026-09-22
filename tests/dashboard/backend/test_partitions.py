@@ -46,3 +46,14 @@ def test_digits_in_non_repoint_prefix_are_not_a_repoint_number() -> None:
     assert parsed.prefix == "idex10"
     assert parsed.label == "idex10"
     assert parsed.repoint is None
+
+
+def test_naive_partition_timestamps_are_interpreted_as_utc() -> None:
+    partition = "daily_2026-09-20T00:00:00_to_2026-09-21T00:00:00"
+
+    parsed = parse_partition(partition)
+
+    assert parsed.prefix == "daily"
+    assert parsed.label == "daily"
+    assert parsed.start_time == datetime.datetime(2026, 9, 20, tzinfo=datetime.UTC)
+    assert parsed.end_time == datetime.datetime(2026, 9, 21, tzinfo=datetime.UTC)

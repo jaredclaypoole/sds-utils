@@ -22,6 +22,12 @@ class PartitionParts(NamedTuple):
     end_time: datetime.datetime | None
 
 
+def _as_utc(value: datetime.datetime) -> datetime.datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=datetime.UTC)
+    return value.astimezone(datetime.UTC)
+
+
 def parse_partition(partition: str | None) -> PartitionParts:
     """Parse identity and UTC interval fields from a partition name."""
     if partition is None or (match := _PARTITION_PATTERN.fullmatch(partition)) is None:
@@ -31,14 +37,6 @@ def parse_partition(partition: str | None) -> PartitionParts:
         end_time = datetime.datetime.fromisoformat(match.group("end_time"))
     except ValueError:
         return PartitionParts(None, None, None, None, None)
-    if (
-        start_time.tzinfo is None
-        or start_time.utcoffset() is None
-        or end_time.tzinfo is None
-        or end_time.utcoffset() is None
-    ):
-        return PartitionParts(None, None, None, None, None)
-
     prefix = match.group("prefix")
     repoint_match = _REPOINT_PATTERN.fullmatch(prefix)
     label = "repoint" if repoint_match is not None else prefix
@@ -48,6 +46,6 @@ def parse_partition(partition: str | None) -> PartitionParts:
         prefix,
         label,
         repoint,
-        start_time.astimezone(datetime.UTC),
-        end_time.astimezone(datetime.UTC),
+        _as_utc(start_time),
+        _as_utc(end_time),
     )
