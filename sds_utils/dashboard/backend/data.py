@@ -1,8 +1,8 @@
 import datetime
 
-from pydantic import BaseModel
 import pandas as pd
 import pandera.pandas as pa
+from pydantic import BaseModel
 
 
 class DataSchema(pa.DataFrameModel):
@@ -15,12 +15,8 @@ class DataSchema(pa.DataFrameModel):
     partition: str
     partition_label: str
     repoint: int = pa.Field(nullable=True)
-    start_time: pd.DatetimeTZDtype = pa.Field(
-        dtype_kwargs={"unit": "ns", "tz": "UTC"}
-    )
-    end_time: pd.DatetimeTZDtype = pa.Field(
-        dtype_kwargs={"unit": "ns", "tz": "UTC"}
-    )
+    start_time: pd.DatetimeTZDtype = pa.Field(dtype_kwargs={"unit": "ns", "tz": "UTC"})
+    end_time: pd.DatetimeTZDtype = pa.Field(dtype_kwargs={"unit": "ns", "tz": "UTC"})
     updated: pd.DatetimeTZDtype = pa.Field(
         dtype_kwargs={"unit": "ns", "tz": "UTC"},
         nullable=True,
@@ -30,12 +26,8 @@ class DataSchema(pa.DataFrameModel):
     skip_reason: str = pa.Field(nullable=True)
     missing_files: str = pa.Field(nullable=True)
     partition_link: str
-    start_date: pd.DatetimeTZDtype = pa.Field(
-        dtype_kwargs={"unit": "ns", "tz": "UTC"}
-    )
-    end_date: pd.DatetimeTZDtype = pa.Field(
-        dtype_kwargs={"unit": "ns", "tz": "UTC"}
-    )
+    start_date: pd.DatetimeTZDtype = pa.Field(dtype_kwargs={"unit": "ns", "tz": "UTC"})
+    end_date: pd.DatetimeTZDtype = pa.Field(dtype_kwargs={"unit": "ns", "tz": "UTC"})
 
     class Config:
         """Require normalized data to contain exactly the declared columns."""
@@ -49,5 +41,5 @@ class QuerySpec(BaseModel):
 
 
 class DataSourceBase:
-    def query(self, query: QuerySpec) -> pd.DataFrame[DataSchema]:
+    def query(self, query: QuerySpec) -> pd.DataFrame:
         raise NotImplementedError

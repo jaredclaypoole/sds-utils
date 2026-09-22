@@ -1,0 +1,251 @@
+"""Tests for the dashboard database data source."""
+
+import datetime
+import logging
+
+import pandas as pd
+import pytest
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, create_engine
+
+from sds_utils.dashboard.backend.data import QuerySpec
+from sds_utils.dashboard.backend.db.models import (
+    CachedDagsterRun,
+    DagsterCacheNamespace,
+    DerivedJobRun,
+)
+from sds_utils.dashboard.backend.dbdata import (
+    _DAGSTER_STATUS_MAP,
+    DBDataSource,
+    _status,
+)
+from sds_utils.dashboard.backend.query.graphql_api import RunStatus
+
+
+def test_all_dagster_statuses_have_dashboard_mappings() -> None:
+    assert set(_DAGSTER_STATUS_MAP) == {status.value for status in RunStatus}
+    assert _DAGSTER_STATUS_MAP[RunStatus.CANCELING.value] == "canceling"
+    assert _DAGSTER_STATUS_MAP[RunStatus.CANCELED.value] == "canceled"
+
+
+def _run(
+    namespace_id: int,
+    run_id: str,
+    status: str,
+    update_time: datetime.datetime,
+) -> CachedDagsterRun:
+    creation_time = update_time - datetime.timedelta(days=30)
+    return CachedDagsterRun(
+        namespace_id=namespace_id,
+        run_id=run_id,
+        job_name="imap-hi_l1b_45-sensor-hk_processing_job",
+        partition=("repoint343_2026-09-05T00:00:00+00:00_to_2026-09-06T23:59:59+00:00"),
+        dagster_status=status,
+        creation_time=creation_time,
+        update_time=update_time,
+        start_time=creation_time + datetime.timedelta(minutes=1),
+        end_time=creation_time + datetime.timedelta(minutes=3),
+        selected_assets=[["asset-a"], ["asset-b"]],
+    )
+
+
+def test_unknown_dagster_status_is_unknown(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    run = _run(1, "future-status-run", "FUTURE_STATUS", datetime.datetime(2026, 9, 10))
+
+    with caplog.at_level(logging.WARNING):
+        status = _status(run, None)
+
+    assert status == "unknown"
+    assert "Unknown Dagster run status 'FUTURE_STATUS'" in caplog.text
+    assert "future-status-run" in caplog.text
+
+
+def test_query_builds_dashboard_dataframe_from_relevant_runs() -> None:
+    db_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(db_engine)
+    with Session(db_engine) as session:
+        namespace = DagsterCacheNamespace(
+            name="default",
+            graphql_url="https://dagster.example/graphql",
+        )
+        other_namespace = DagsterCacheNamespace(
+            name="other",
+            graphql_url="https://other-dagster.example/graphql",
+        )
+        session.add_all([namespace, other_namespace])
+        session.flush()
+        assert namespace.id is not None
+        assert other_namespace.id is not None
+
+        successful = _run(
+            namespace.id,
+            "successful",
+            "SUCCESS",
+            datetime.datetime(2026, 9, 10, 12),
+        )
+        failed = _run(
+            namespace.id,
+            "failed",
+            "FAILURE",
+            datetime.datetime(2026, 9, 10, 13),
+        )
+        failed.partition = (
+            "long-label_2026-09-07T00:00:00+00:00_to_2026-09-08T00:00:00+00:00"
+        )
+        running = _run(
+            namespace.id,
+            "running",
+            "STARTED",
+            datetime.datetime(2026, 9, 10, 14),
+        )
+        canceled = _run(
+            namespace.id,
+            "canceled",
+            "CANCELED",
+            datetime.datetime(2026, 9, 10, 13, 30),
+        )
+        canceling = _run(
+            namespace.id,
+            "canceling",
+            "CANCELING",
+            datetime.datetime(2026, 9, 10, 13, 45),
+        )
+        pending_details = _run(
+            namespace.id,
+            "pending-details",
+            "SUCCESS",
+            datetime.datetime(2026, 9, 10, 15),
+        )
+        pending_details.job_name = "unparsable"
+        pending_details.partition = None
+        outside = _run(
+            namespace.id,
+            "outside",
+            "SUCCESS",
+            datetime.datetime(2026, 9, 12),
+        )
+        other_namespace_run = _run(
+            other_namespace.id,
+            "other-namespace-run",
+            "FAILURE",
+            datetime.datetime(2026, 9, 10, 16),
+        )
+        session.add_all(
+            [
+                successful,
+                failed,
+                running,
+                canceled,
+                canceling,
+                pending_details,
+                outside,
+                other_namespace_run,
+            ]
+        )
+        session.flush()
+        assert successful.id is not None
+        assert outside.id is not None
+        session.add_all(
+            [
+                DerivedJobRun(
+                    cached_run_id=successful.id,
+                    dashboard_status="skipped",
+                    n_expected=2,
+                    n_materialized=1,
+                    n_skipped=1,
+                    n_explicitly_skipped=1,
+                    skip_info={
+                        "status": "Skipped - Missing dependencies",
+                        "missing_files": "imap_test_missing.cdf",
+                    },
+                ),
+                DerivedJobRun(
+                    cached_run_id=outside.id,
+                    dashboard_status="materialized",
+                ),
+            ]
+        )
+        session.commit()
+
+    data_df = DBDataSource(db_engine, "default").query(
+        QuerySpec(
+            start_time=datetime.datetime(2026, 9, 10, tzinfo=datetime.UTC),
+            end_time=datetime.datetime(2026, 9, 11, tzinfo=datetime.UTC),
+        )
+    )
+
+    assert data_df["run_id"].tolist() == [
+        "pending-details",
+        "running",
+        "canceling",
+        "canceled",
+        "failed",
+        "successful",
+    ]
+    assert data_df.set_index("run_id")["status"].to_dict() == {
+        "pending-details": "unknown",
+        "running": "materializing",
+        "canceling": "canceling",
+        "canceled": "canceled",
+        "failed": "failed",
+        "successful": "skipped",
+    }
+    successful_row = data_df.set_index("run_id").loc["successful"]
+    assert data_df.columns[:8].tolist() == [
+        "run_id",
+        "instrument",
+        "data_level",
+        "descriptor",
+        "partition",
+        "partition_label",
+        "repoint",
+        "job_name",
+    ]
+    assert successful_row["instrument"] == "imap-hi"
+    assert successful_row["data_level"] == "l1b"
+    assert successful_row["descriptor"] == "45-sensor-hk"
+    assert successful_row["partition_label"] == "repoint"
+    assert successful_row["repoint"] == 343
+    assert successful_row["n_expected"] == 2
+    assert successful_row["n_explicitly_skipped"] == 1
+    assert successful_row["skip_reason"] == "Skipped - Missing dependencies"
+    assert successful_row["missing_files"] == "imap_test_missing.cdf"
+    assert successful_row["duration_seconds"] == 120
+    assert successful_row["start_time"] == pd.Timestamp("2026-09-05T00:00:00Z")
+    assert successful_row["end_time"] == pd.Timestamp("2026-09-06T23:59:59Z")
+    assert successful_row["start_date"] == pd.Timestamp(
+        "2026-09-05",
+        tz="UTC",
+    )
+    assert successful_row["end_date"] == pd.Timestamp(
+        "2026-09-06",
+        tz="UTC",
+    )
+    failed_row = data_df.set_index("run_id").loc["failed"]
+    assert failed_row["partition_label"] == "long-label"
+    assert pd.isna(failed_row["repoint"])
+    unparseable_row = data_df.set_index("run_id").loc["pending-details"]
+    assert pd.isna(unparseable_row["instrument"])
+    assert pd.isna(unparseable_row["data_level"])
+    assert pd.isna(unparseable_row["descriptor"])
+    assert pd.isna(unparseable_row["partition_label"])
+    assert pd.isna(unparseable_row["repoint"])
+    assert pd.isna(unparseable_row["start_time"])
+    assert pd.isna(unparseable_row["end_time"])
+    assert data_df["n_expected"].dtype == pd.Int64Dtype()
+    assert str(data_df["creation_time"].dtype) == "datetime64[ns, UTC]"
+    assert str(data_df["start_date"].dtype) == "datetime64[ns, UTC]"
+
+    missing_namespace_df = DBDataSource(db_engine, "missing").query(
+        QuerySpec(
+            start_time=datetime.datetime(2026, 9, 10, tzinfo=datetime.UTC),
+            end_time=datetime.datetime(2026, 9, 11, tzinfo=datetime.UTC),
+        )
+    )
+    assert missing_namespace_df.empty

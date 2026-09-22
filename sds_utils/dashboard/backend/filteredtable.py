@@ -1,13 +1,13 @@
 from collections import defaultdict
-from typing import Iterable
+from collections.abc import Iterable
 
 import pandas as pd
 
-from .data import DataSchema, DataSourceBase, QuerySpec
 from .aggbase import (
-    AggSpec,
     Aggregator,
+    AggSpec,
 )
+from .data import DataSourceBase, QuerySpec
 from .filtersbase import (
     FilterArguments,
     FiltersBase,
@@ -61,7 +61,7 @@ class FilteredTable:
         self._agg = agg or Aggregator()
         self._data_source = data_source
         self._query_spec: QuerySpec | None = None
-        self._full_data_df: pd.DataFrame[DataSchema] | None = None
+        self._full_data_df: pd.DataFrame | None = None
 
     @property
     def filters(self) -> Filters:
@@ -75,10 +75,10 @@ class FilteredTable:
         self._full_data_df = self._data_source.query(self._query_spec)
 
     def transform_data(
-            self,
-            filter_kwargs: FilterArguments | None = None,
-            agg_spec: AggSpec | None = None,
-        ) -> pd.DataFrame:
+        self,
+        filter_kwargs: FilterArguments | None = None,
+        agg_spec: AggSpec | None = None,
+    ) -> pd.DataFrame:
         if self._full_data_df is None:
             self.refresh_data()
         data_df = self._full_data_df
