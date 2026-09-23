@@ -53,6 +53,7 @@ class StringFilterMenu(UIElem):
         values: list[str],
         on_change: Callable[[], None],
     ) -> Self:
+        """Construct the appropriate frontend menu for a registered filter."""
         if isinstance(filter_, StringRegisteredFilter):
             return cls(filter_, values, on_change)
         raise NotImplementedError(type(filter_).__name__)

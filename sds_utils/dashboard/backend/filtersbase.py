@@ -1,3 +1,5 @@
+"""Descriptors and base classes for declarative dataframe filters."""
+
 import inspect
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
@@ -87,11 +89,14 @@ class FilterProperty(
 
 
 class StrHierarchySpec(BaseModel):
+    """Describe parent-child grouping for string filter values."""
+
     hierarchy: dict[str, list[str]] | Callable[[Iterable[str]], dict[str, list[str]]]
     other: str | None = "Other"
     all: str | None = "All"
 
     def build_hierarchy(self, values: Iterable[str]) -> dict[str, list[str]]:
+        """Build a concrete hierarchy for the currently available values."""
         if callable(self.hierarchy):
             return self.hierarchy(values)
         else:
@@ -163,6 +168,8 @@ def filter_property(
 
 
 class FiltersBase:
+    """Discover and apply filters declared as filter properties."""
+
     def __iter__(self) -> Iterator[FilterBase]:
         """Iterate over filters in their class-definition order."""
         filter_names: dict[str, None] = {}

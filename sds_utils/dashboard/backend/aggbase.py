@@ -1,3 +1,5 @@
+"""Aggregate dashboard rows into supported summary views."""
+
 from enum import StrEnum, auto
 
 import pandas as pd
@@ -7,6 +9,8 @@ from .status import StatusCounts
 
 
 class AggPreset(StrEnum):
+    """Supported raw and aggregated table layouts."""
+
     RAW = auto()
     DATES_SUMMARY = auto()
     DATA_LEVELS_SNAPSHOT = auto()
@@ -14,12 +18,17 @@ class AggPreset(StrEnum):
 
 
 class AggSpec(BaseModel):
+    """Select an aggregation preset and optional grouping columns."""
+
     preset: AggPreset
     extra_columns: list[str] = Field(default_factory=list)
 
 
 class Aggregator:
+    """Apply dashboard aggregation specifications to dataframes."""
+
     def apply(self, data_df: pd.DataFrame, agg_spec: AggSpec) -> pd.DataFrame:
+        """Transform dashboard rows according to an aggregation specification."""
         match agg_spec.preset:
             case AggPreset.RAW:
                 return data_df

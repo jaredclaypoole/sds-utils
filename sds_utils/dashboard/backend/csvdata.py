@@ -1,3 +1,5 @@
+"""Legacy CSV-backed dashboard data source."""
+
 import datetime
 from pathlib import Path
 
@@ -94,7 +96,10 @@ class CSVDataSchema(pa.DataFrameModel):
 
 
 class CSVDataSource:
+    """Load dashboard rows from the temporary August CSV export."""
+
     def query(self, query: QuerySpec) -> pd.DataFrame[DataSchema]:
+        """Return CSV rows contained within the supported August window."""
         assert query.start_time >= datetime.datetime(2026, 8, 1)
         assert query.end_time < datetime.datetime(2026, 8, 30)
 

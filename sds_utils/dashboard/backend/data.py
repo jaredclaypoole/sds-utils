@@ -1,3 +1,5 @@
+"""Shared dataframe schemas and data-source query types."""
+
 import datetime
 from typing import Literal
 
@@ -37,6 +39,8 @@ class DataSchema(pa.DataFrameModel):
 
 
 class QuerySpec(BaseModel):
+    """Describe the date and version constraints for a dashboard query."""
+
     start_time: datetime.datetime
     end_time: datetime.datetime
     date_mode: Literal["update_time", "partition"] = "update_time"
@@ -44,5 +48,8 @@ class QuerySpec(BaseModel):
 
 
 class DataSourceBase:
+    """Base interface for dashboard dataframe providers."""
+
     def query(self, query: QuerySpec) -> pd.DataFrame:
+        """Load dashboard rows matching a query specification."""
         raise NotImplementedError

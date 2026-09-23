@@ -1,3 +1,5 @@
+"""NiceGUI rendering for filtered and aggregated dashboard tables."""
+
 import datetime
 import json
 from abc import abstractmethod
@@ -27,6 +29,8 @@ from .uielem import UIElem
 
 
 class FilteredTableViewBase(UIElem):
+    """Interface for queryable dashboard table views."""
+
     @abstractmethod
     def update_query(self, query: QuerySpec) -> None:
         """Update the table query and ultimately the transforms as well."""
@@ -37,12 +41,15 @@ class FilteredTableViewBase(UIElem):
 
 
 class FilteredTableView(FilteredTableViewBase):
+    """Render a filtered table with summaries and aggregation controls."""
+
     def __init__(self, table: FilteredTable, *, dagster_url: str) -> None:
         self.table = table
         self.dagster_url = dagster_url.rstrip("/")
         self.agg_preset = AggPreset.RAW
 
     def render(self) -> None:
+        """Create table controls, filters, summaries, and the initial table."""
         self.filter_menus = {
             filter_.name: StringFilterMenu.from_filter(filter_, [], self.update_table)
             for filter_ in self.table.filters
@@ -71,6 +78,7 @@ class FilteredTableView(FilteredTableViewBase):
         self.update_query(query)
 
     def update_query(self, query: QuerySpec) -> None:
+        """Reload backend data and update all query-dependent controls."""
         self.table.set_query(query)
         self.table.refresh_data()
         self.full_data_df = self.table.transform_data()
@@ -86,6 +94,7 @@ class FilteredTableView(FilteredTableViewBase):
         self.update_table()
 
     def update_table(self) -> None:
+        """Rebuild the displayed table using current filters and aggregation."""
         filter_arguments: FilterArguments = {}
         for name, menu in self.filter_menus.items():
             arguments = menu.arguments()

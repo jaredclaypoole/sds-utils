@@ -1,3 +1,5 @@
+"""Filtering and aggregation orchestration for dashboard tables."""
+
 from collections import defaultdict
 from collections.abc import Iterable
 
@@ -26,6 +28,8 @@ def _make_data_level_hierachy(values: Iterable[str]) -> dict[str, list[str]]:
 
 
 class Filters(FiltersBase):
+    """Declare the filters available to dashboard table consumers."""
+
     status = StringRegisteredFilter.property()
     instrument = StringRegisteredFilter.property(
         hierarchy=StrHierarchySpec(
@@ -51,6 +55,8 @@ class Filters(FiltersBase):
 
 
 class FilteredTable:
+    """Coordinate data loading, registered filters, and aggregations."""
+
     def __init__(
         self,
         data_source: DataSourceBase,
@@ -65,12 +71,15 @@ class FilteredTable:
 
     @property
     def filters(self) -> Filters:
+        """Return the filters available for this table."""
         return self._filters
 
     def set_query(self, query_spec: QuerySpec) -> None:
+        """Set the query used by the next data refresh."""
         self._query_spec = query_spec
 
     def refresh_data(self) -> None:
+        """Reload the complete dataframe for the configured query."""
         assert self._query_spec is not None
         self._full_data_df = self._data_source.query(self._query_spec)
 
@@ -79,6 +88,7 @@ class FilteredTable:
         filter_kwargs: FilterArguments | None = None,
         agg_spec: AggSpec | None = None,
     ) -> pd.DataFrame:
+        """Apply requested filters and aggregation to the loaded dataframe."""
         if self._full_data_df is None:
             self.refresh_data()
         data_df = self._full_data_df
