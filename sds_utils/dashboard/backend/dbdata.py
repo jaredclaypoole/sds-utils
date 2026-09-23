@@ -166,8 +166,7 @@ class DBDataSource(DataSourceBase):
                 )
                 .join(
                     DagsterCacheNamespace,
-                    col(CachedDagsterRun.namespace_id)
-                    == DagsterCacheNamespace.id,
+                    col(CachedDagsterRun.namespace_id) == DagsterCacheNamespace.id,
                 )
                 .where(DagsterCacheNamespace.name == self.namespace)
             )
@@ -185,9 +184,7 @@ class DBDataSource(DataSourceBase):
             latest_run_ids = select(ranked_runs_subquery.c.cached_run_id).where(
                 ranked_runs_subquery.c.version_rank == 1
             )
-            statement = statement.where(
-                col(CachedDagsterRun.id).in_(latest_run_ids)
-            )
+            statement = statement.where(col(CachedDagsterRun.id).in_(latest_run_ids))
         with Session(self.engine) as session:
             results = list(session.exec(statement))
 

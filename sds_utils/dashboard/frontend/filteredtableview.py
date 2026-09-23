@@ -233,9 +233,7 @@ class FilteredTableView(FilteredTableViewBase):
             "parent_run_id",
             "root_run_id",
         ]
-        display_df = data_df.drop(
-            columns=cols_to_hide, errors="ignore"
-        )
+        display_df = data_df.drop(columns=cols_to_hide, errors="ignore")
         if any(name is not None for name in display_df.index.names):
             display_df = display_df.reset_index()
         for column in ("start_date", "end_date"):

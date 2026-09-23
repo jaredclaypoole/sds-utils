@@ -28,9 +28,10 @@ class CSVDataSchema(pa.DataFrameModel):
 
         strict = True
 
-
     @classmethod
-    def convert_data(cls, raw_df: pd.DataFrame["CSVDataSchema"]) -> pd.DataFrame["DataSchema"]:
+    def convert_data(
+        cls, raw_df: pd.DataFrame["CSVDataSchema"]
+    ) -> pd.DataFrame["DataSchema"]:
         """Convert raw CSV columns and partition strings into normalized data."""
         raw_df = CSVDataSchema.validate(raw_df, lazy=True)
         partition_parts = raw_df["Partition"].str.extract(
@@ -49,9 +50,7 @@ class CSVDataSchema(pa.DataFrameModel):
 
         partition_labels = partition_parts["partition_label"]
         is_repoint = partition_labels.str.startswith("repoint")
-        repoint_values = partition_labels.where(is_repoint).str.removeprefix(
-            "repoint"
-        )
+        repoint_values = partition_labels.where(is_repoint).str.removeprefix("repoint")
         invalid_repoints = is_repoint & ~repoint_values.str.fullmatch(
             r"[+-]?\d+", na=False
         )
@@ -76,9 +75,7 @@ class CSVDataSchema(pa.DataFrameModel):
                 "partition": raw_df["Partition"],
                 "partition_label": partition_labels,
                 "repoint": repoint,
-                "start_time": pd.to_datetime(
-                    partition_parts["start_time"], utc=True
-                ),
+                "start_time": pd.to_datetime(partition_parts["start_time"], utc=True),
                 "end_time": pd.to_datetime(partition_parts["end_time"], utc=True),
                 "updated": pd.to_datetime(raw_df["Updated (UTC)"], utc=True),
                 "status": raw_df["Status"],
@@ -112,9 +109,8 @@ class CSVDataSource:
         _raw_df = pd.read_csv(path)
         raw_df = CSVDataSchema.validate(_raw_df, lazy=True)
         data_df = CSVDataSchema.convert_data(raw_df)
-        date_mask = (
-            (data_df["start_time"] >= start_time_pd) &
-            (data_df["end_time"] <= end_time_pd)
+        date_mask = (data_df["start_time"] >= start_time_pd) & (
+            data_df["end_time"] <= end_time_pd
         )
         data_df_filtered = data_df[date_mask]
         return data_df_filtered
