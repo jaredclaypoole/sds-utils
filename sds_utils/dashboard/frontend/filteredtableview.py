@@ -11,7 +11,7 @@ from nicegui.events import ValueChangeEventArguments
 
 from ..backend.aggbase import AggPreset, AggSpec
 from ..backend.data import QuerySpec
-from ..backend.filteredtable import FilteredTable
+from ..backend.filteredtable import FilteredTable, SortSpec
 from ..backend.filtersbase import (
     FilterArguments,
     StringRegisteredFilter,
@@ -101,10 +101,18 @@ class FilteredTableView(FilteredTableViewBase):
             if arguments is not None:
                 filter_arguments[name] = arguments
 
+        sort_specs = dict(
+            instrument=SortSpec(),
+            data_level=SortSpec(),
+            descriptor=SortSpec(),
+            start_time=SortSpec(),
+        )
+
         filtered_df = self.table.transform_data(filter_arguments)
         data_df = self.table.transform_data(
-            filter_arguments,
-            AggSpec(preset=self.agg_preset),
+            filter_kwargs=filter_arguments,
+            agg_spec=AggSpec(preset=self.agg_preset),
+            sort_specs=sort_specs,
         )
         display_df = self._display_data(data_df)
 

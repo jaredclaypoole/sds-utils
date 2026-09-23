@@ -18,6 +18,12 @@ from .filtersbase import (
 )
 
 
+class SortSpec:
+    """Lightweight specification for sorting options."""
+
+    ascending: bool = True
+
+
 def _make_data_level_hierachy(values: Iterable[str]) -> dict[str, list[str]]:
     values = [value for value in values if value.lower().startswith("l")]
     hierarchy_sets: dict[str, set[str]] = defaultdict(set)
@@ -88,6 +94,7 @@ class FilteredTable:
         self,
         filter_kwargs: FilterArguments | None = None,
         agg_spec: AggSpec | None = None,
+        sort_specs: dict[str, SortSpec] | None = None,
     ) -> pd.DataFrame:
         """Apply requested filters and aggregation to the loaded dataframe."""
         if self._full_data_df is None:
@@ -96,4 +103,17 @@ class FilteredTable:
         data_df = self._filters.apply(data_df, filter_kwargs)
         if agg_spec is not None:
             data_df = self._agg.apply(data_df, agg_spec)
+        if sort_specs is not None:
+            data_df = self._sort(data_df, sort_specs)
         return data_df
+
+    @classmethod
+    def _sort(
+        cls, data_df: pd.DataFrame, sort_spec: dict[str, SortSpec]
+    ) -> pd.DataFrame:
+        """Sort the dataframe by the indicated columns."""
+        all_cols = set(data_df.columns)
+        sort_spec = {k: v for k, v in sort_spec.items() if k in all_cols}
+        cols = list(sort_spec.keys())
+        asc = [spec.ascending for spec in sort_spec.values()]
+        return data_df.sort_values(cols, ascending=asc)
