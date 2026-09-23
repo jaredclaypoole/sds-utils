@@ -80,7 +80,8 @@ class FilteredTable:
 
     def refresh_data(self) -> None:
         """Reload the complete dataframe for the configured query."""
-        assert self._query_spec is not None
+        if self._query_spec is None:
+            raise ValueError("The set_query method must be run before refresh_data.")
         self._full_data_df = self._data_source.query(self._query_spec)
 
     def transform_data(

@@ -97,8 +97,10 @@ class CSVDataSource:
 
     def query(self, query: QuerySpec) -> pd.DataFrame[DataSchema]:
         """Return CSV rows contained within the supported August window."""
-        assert query.start_time >= datetime.datetime(2026, 8, 1)
-        assert query.end_time < datetime.datetime(2026, 8, 30)
+        if query.start_time < datetime.datetime(
+            2026, 8, 1
+        ) or query.end_time < datetime.datetime(2026, 8, 30):
+            raise ValueError("Query must fall between 2026-08-01 and 2026-08-30")
 
         start_time_pd = pd.to_datetime(query.start_time, utc=True, unit="ns")
         end_time_pd = pd.to_datetime(query.end_time, utc=True, unit="ns")

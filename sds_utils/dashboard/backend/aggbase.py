@@ -59,7 +59,8 @@ class Aggregator:
         if horiz_col is not None:
             if agg_spec.extra_columns:
                 raise ValueError(
-                    f"Extra columns are not allowed for this agg preset: {agg_spec.preset}"
+                    "Extra columns are not allowed for this agg preset: "
+                    f"{agg_spec.preset}"
                 )
             snapshot_df = grouped_df.pivot_table(
                 columns=horiz_col,

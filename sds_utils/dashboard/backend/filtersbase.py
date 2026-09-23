@@ -61,7 +61,7 @@ class FilterProperty(
     ) -> None:
         signature = inspect.signature(function)
         parameters = tuple(signature.parameters.values())
-        if len(parameters) < 2:
+        if len(parameters) < 2:  # noqa: PLR2004
             raise TypeError(
                 f"Filter {function.__name__!r} must accept self and data_df"
             )
