@@ -65,6 +65,8 @@ class FilteredTableView(FilteredTableViewBase):
         query = QuerySpec(
             start_time=datetime.datetime(2026, 8, 1),
             end_time=datetime.datetime(2026, 9, 30) - datetime.timedelta(seconds=1),
+            # date_mode="partition",
+            version_mode="latest",
         )
         self.update_query(query)
 
@@ -211,8 +213,19 @@ class FilteredTableView(FilteredTableViewBase):
 
     @staticmethod
     def _display_data(data_df: pd.DataFrame) -> pd.DataFrame:
+        cols_to_hide = [
+            "asset",
+            "partition",
+            "partition_prefix",
+            "job_name",
+            "job_key",
+            "tags",
+            "selected_assets",
+            "parent_run_id",
+            "root_run_id",
+        ]
         display_df = data_df.drop(
-            columns=["asset", "partition", "job_name"], errors="ignore"
+            columns=cols_to_hide, errors="ignore"
         )
         if any(name is not None for name in display_df.index.names):
             display_df = display_df.reset_index()

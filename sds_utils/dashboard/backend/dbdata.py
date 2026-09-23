@@ -211,8 +211,6 @@ class DBDataSource(DataSourceBase):
                     "end_time": run.partition_end_time,
                     "status": _status(run, derived),
                     "dagster_status": run.dagster_status,
-                    "start_date": None,
-                    "end_date": None,
                     "n_expected": derived.n_expected if derived is not None else None,
                     "n_materialized": (
                         derived.n_materialized if derived is not None else None
@@ -237,6 +235,8 @@ class DBDataSource(DataSourceBase):
                     "skip_info": skip_info,
                     "skip_reason": skip_reason,
                     "missing_files": missing_files,
+                    "start_date": None,
+                    "end_date": None,
                 }
             )
 
