@@ -3,6 +3,7 @@
 import datetime
 import json
 from abc import abstractmethod
+from collections.abc import Callable
 from typing import Any
 
 import pandas as pd
@@ -16,6 +17,7 @@ from ..backend.filtersbase import (
     FilterArguments,
     StringRegisteredFilter,
 )
+from ..backend.settings import DashboardSettings
 from .filters import StringFilterMenu
 from .status import (
     SNAPSHOT_TOTAL_CLASS,
@@ -43,10 +45,19 @@ class FilteredTableViewBase(UIElem):
 class FilteredTableView(FilteredTableViewBase):
     """Render a filtered table with summaries and aggregation controls."""
 
-    def __init__(self, table: FilteredTable, *, dagster_url: str) -> None:
+    def __init__(
+        self,
+        table: FilteredTable,
+        *,
+        dagster_url: str,
+        settings: DashboardSettings,
+        sync_settings: Callable[[DashboardSettings], None],
+    ) -> None:
         self.table = table
         self.dagster_url = dagster_url.rstrip("/")
-        self.agg_preset = AggPreset.RAW
+        self.agg_spec = settings.agg
+        self._initial_filtering: FilterArguments | None = settings.filtering
+        self._sync_settings = sync_settings
 
     def render(self) -> None:
         """Create table controls, filters, summaries, and the initial table."""
@@ -60,7 +71,7 @@ class FilteredTableView(FilteredTableViewBase):
         }
         self.summary_view = ui.select(
             preset_options,
-            value=self.agg_preset.value,
+            value=self.agg_spec.preset.value,
             label="Summary view",
             on_change=self._on_agg_preset_change,
         ).classes("min-w-56")
@@ -91,6 +102,12 @@ class FilteredTableView(FilteredTableViewBase):
             self.full_data_df,
             select_new_values=True,
         )
+        if self._initial_filtering is not None:
+            for name, arguments in self._initial_filtering.items():
+                restored_menu = self.filter_menus.get(name)
+                if restored_menu is not None:
+                    restored_menu.set_arguments(arguments)
+            self._initial_filtering = None
         self.update_table()
 
     def update_table(self) -> None:
@@ -111,7 +128,7 @@ class FilteredTableView(FilteredTableViewBase):
         filtered_df = self.table.transform_data(filter_arguments)
         data_df = self.table.transform_data(
             filter_kwargs=filter_arguments,
-            agg_spec=AggSpec(preset=self.agg_preset),
+            agg_spec=self.agg_spec,
             sort_specs=sort_specs,
         )
         display_df = self._display_data(data_df)
@@ -126,12 +143,18 @@ class FilteredTableView(FilteredTableViewBase):
         with self.table_container:
             self._build_table(display_df)
         self.status_summary.update(self.full_data_df, filtered_df)
+        self._sync_settings(
+            DashboardSettings(
+                agg=self.agg_spec,
+                filtering=filter_arguments,
+            )
+        )
 
     def _on_agg_preset_change(
         self,
         event: ValueChangeEventArguments[Any],
     ) -> None:
-        self.agg_preset = AggPreset(event.value)
+        self.agg_spec = AggSpec(preset=AggPreset(event.value))
         self.update_table()
 
     def _build_table(self, display_df: pd.DataFrame) -> None:

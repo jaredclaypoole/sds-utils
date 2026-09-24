@@ -191,6 +191,30 @@ class StringFilterMenu(UIElem):
             )
         }
 
+    def set_arguments(self, arguments: dict[str, Any]) -> None:
+        """Restore selections represented by backend string-filter arguments."""
+        included = arguments.get("included_values_regex")
+        excluded = arguments.get("excluded_values_regex")
+        if included is not None and not isinstance(included, str):
+            return
+        if excluded is not None and not isinstance(excluded, str):
+            return
+
+        selected = set(self.all_values)
+        try:
+            if included is not None:
+                selected = {
+                    value for value in selected if re.fullmatch(included, value)
+                }
+            if excluded is not None:
+                selected = {
+                    value for value in selected if not re.fullmatch(excluded, value)
+                }
+        except re.error:
+            return
+        self.selected = selected
+        self._sync_checkboxes()
+
     def set_value_selected(self, value: str, selected: bool) -> None:
         """Select or clear one concrete value and notify the table view."""
         if value not in self.all_values:

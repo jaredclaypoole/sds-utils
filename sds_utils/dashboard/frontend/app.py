@@ -6,9 +6,10 @@ from nicegui import ui
 from sqlmodel import Session, select
 
 from ..backend.db import create_db_and_tables, engine
-from ..backend.db.models import UserProfile
+from ..backend.db.models import PersistentSettings, UserProfile
 from ..backend.dbdata import DBDataSource
 from ..backend.filteredtable import FilteredTable
+from ..backend.settings import DashboardSettings
 from .filteredtableview import FilteredTableView
 from .login import LoginView, dashboard_url, ensure_user_profile
 from .uielem import UIElem
@@ -17,7 +18,8 @@ from .uielem import UIElem
 class TableApp(UIElem):
     """Construct the database-backed dashboard application."""
 
-    def __init__(self, username: str) -> None:
+    def __init__(self, user_id: int, username: str) -> None:
+        self.user_id = user_id
         self.username = username
 
     def render(self) -> None:
@@ -27,10 +29,34 @@ class TableApp(UIElem):
             dagster_namespace="prod",
         )
         table = FilteredTable(data_source)
+        settings = self._load_settings()
         self.table_view = FilteredTableView(
             table,
             dagster_url=os.environ["DAGSTER_BASE_URL"],
+            settings=settings,
+            sync_settings=self._save_settings,
         ).build()
+
+    def _load_settings(self) -> DashboardSettings:
+        with Session(engine) as session:
+            stored = session.get(PersistentSettings, self.user_id)
+        if stored is None:
+            return DashboardSettings()
+        return stored.validated_settings()
+
+    def _save_settings(self, settings: DashboardSettings) -> None:
+        with Session(engine) as session:
+            stored = session.get(PersistentSettings, self.user_id)
+            settings_json = settings.model_dump(mode="json")
+            if stored is None:
+                stored = PersistentSettings(
+                    user_id=self.user_id,
+                    settings=settings_json,
+                )
+            else:
+                stored.settings = settings_json
+            session.add(stored)
+            session.commit()
 
 
 @ui.page("/")
@@ -55,7 +81,9 @@ def filtered_table_page(username: str = "") -> None:
         ui.label("Unknown username. Please log in first.").classes("text-negative")
         ui.button("Return to login", on_click=lambda: ui.navigate.to("/"))
         return
-    TableApp(username).build()
+    if profile.id is None:
+        raise RuntimeError("Persisted user profile has no database ID")
+    TableApp(profile.id, username).build()
 
 
 def main() -> None:
