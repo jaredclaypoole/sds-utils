@@ -3,16 +3,22 @@
 import os
 
 from nicegui import ui
+from sqlmodel import Session, select
 
-from ..backend.db import engine
+from ..backend.db import create_db_and_tables, engine
+from ..backend.db.models import UserProfile
 from ..backend.dbdata import DBDataSource
 from ..backend.filteredtable import FilteredTable
 from .filteredtableview import FilteredTableView
+from .login import LoginView, dashboard_url, ensure_user_profile
 from .uielem import UIElem
 
 
 class TableApp(UIElem):
     """Construct the database-backed dashboard application."""
+
+    def __init__(self, username: str) -> None:
+        self.username = username
 
     def render(self) -> None:
         """Build the dashboard's data source and table view."""
@@ -27,15 +33,35 @@ class TableApp(UIElem):
         ).build()
 
 
-def render() -> None:
-    """Render the root dashboard component."""
-    TableApp().build()
+@ui.page("/")
+def login_page() -> None:
+    """Render the username login page."""
+    username = os.getenv("DASHBOARD_APP_USERNAME", "").strip()
+    if username:
+        ensure_user_profile(engine, username)
+        ui.navigate.to(dashboard_url(username))
+        return
+    LoginView(engine).build()
+
+
+@ui.page("/filteredtableview")
+def filtered_table_page(username: str = "") -> None:
+    """Render the dashboard for an existing user profile."""
+    with Session(engine) as session:
+        profile = session.exec(
+            select(UserProfile).where(UserProfile.username == username)
+        ).first()
+    if profile is None:
+        ui.label("Unknown username. Please log in first.").classes("text-negative")
+        ui.button("Return to login", on_click=lambda: ui.navigate.to("/"))
+        return
+    TableApp(username).build()
 
 
 def main() -> None:
     """Start the NiceGUI dashboard server."""
+    create_db_and_tables()
     ui.run(
-        root=render,
         title="IMAP Processing Status Dashboard",
         favicon="📈",
         reload=False,
