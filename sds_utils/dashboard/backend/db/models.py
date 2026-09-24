@@ -7,10 +7,37 @@ import json
 from sqlalchemy import JSON, Column, Index, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
+from ..settings import DashboardSettings
+
 
 def _utc_now() -> datetime.datetime:
     """Return the current timezone-aware UTC timestamp."""
     return datetime.datetime.now(datetime.UTC)
+
+
+class UserProfile(SQLModel, table=True):
+    """Identify a dashboard user with persistent preferences."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    username: str = Field(index=True, unique=True)
+
+
+class PersistentSettings(SQLModel, table=True):
+    """Store one JSON settings document for a dashboard user."""
+
+    user_id: int = Field(
+        foreign_key="userprofile.id",
+        primary_key=True,
+        unique=True,
+    )
+    settings: dict[str, object] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+
+    def validated_settings(self) -> DashboardSettings:
+        """Return typed settings, falling back to defaults for invalid JSON."""
+        return DashboardSettings.from_stored(self.settings)
 
 
 class DagsterCacheNamespace(SQLModel, table=True):
