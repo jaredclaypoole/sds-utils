@@ -249,6 +249,10 @@ class DBDataSource(DataSourceBase):
                     "n_explicitly_skipped": (
                         derived.n_explicitly_skipped if derived is not None else None
                     ),
+                    "skip_info": skip_info,
+                    "skip_reason": skip_reason,
+                    "missing_files": missing_files,
+                    "missing_reason": _parse_missing_reason(missing_files),
                     "creation_time": run.creation_time,
                     "update_time": run.update_time,
                     "run_start_time": run.start_time,
@@ -262,10 +266,6 @@ class DBDataSource(DataSourceBase):
                     "root_run_id": run.root_run_id,
                     "selected_assets": run.selected_assets,
                     "tags": run.tags,
-                    "skip_info": skip_info,
-                    "skip_reason": skip_reason,
-                    "missing_files": missing_files,
-                    "missing_reason": _parse_missing_reason(missing_files),
                     "start_date": None,
                     "end_date": None,
                 }

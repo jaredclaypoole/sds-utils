@@ -52,6 +52,9 @@ class DashboardTableRenderer:
             "selected_assets",
             "parent_run_id",
             "root_run_id",
+            "skip_info",
+            "skip_reason",
+            "missing_files",
         ]
         display_df = data_df.drop(columns=cols_to_hide, errors="ignore")
         if any(name is not None for name in display_df.index.names):
