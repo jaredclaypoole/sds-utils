@@ -116,4 +116,6 @@ class FilteredTable:
         sort_spec = {k: v for k, v in sort_spec.items() if k in all_cols}
         cols = list(sort_spec.keys())
         asc = [spec.ascending for spec in sort_spec.values()]
-        return data_df.sort_values(cols, ascending=asc)
+        if cols:
+            data_df = data_df.sort_values(cols, ascending=asc)
+        return data_df
