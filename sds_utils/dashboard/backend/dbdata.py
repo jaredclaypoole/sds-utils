@@ -32,7 +32,7 @@ _COUNT_COLUMNS = (
     "n_expected",
     "n_materialized",
     "n_skipped",
-    "n_explicitly_skipped",
+    "n_missing",
 )
 _DAGSTER_STATUS_MAP = {
     "QUEUED": "materializing",
@@ -246,9 +246,7 @@ class DBDataSource(DataSourceBase):
                         derived.n_materialized if derived is not None else None
                     ),
                     "n_skipped": derived.n_skipped if derived is not None else None,
-                    "n_explicitly_skipped": (
-                        derived.n_explicitly_skipped if derived is not None else None
-                    ),
+                    "n_missing": derived.n_missing if derived is not None else None,
                     "skip_info": skip_info,
                     "skip_reason": skip_reason,
                     "missing_files": missing_files,

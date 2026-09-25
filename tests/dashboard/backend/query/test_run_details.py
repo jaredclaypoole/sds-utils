@@ -222,15 +222,15 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
     assert materialized.n_expected == 2
     assert materialized.n_materialized == 2
     assert materialized.n_skipped == 0
-    assert materialized.n_explicitly_skipped == 0
+    assert materialized.n_missing == 0
     assert materialized.skip_info is None
 
     partial = derived_runs[cached_runs["partial-run"].id]
     assert partial.dashboard_status == "skipped"
     assert partial.n_expected == 2
     assert partial.n_materialized == 1
-    assert partial.n_skipped == 1
-    assert partial.n_explicitly_skipped == 0
+    assert partial.n_skipped == 0
+    assert partial.n_missing == 1
     assert partial.skip_info is None
 
     skipped = derived_runs[cached_runs["skipped-run"].id]
@@ -238,7 +238,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
     assert skipped.n_expected == 2
     assert skipped.n_materialized == 0
     assert skipped.n_skipped == 2
-    assert skipped.n_explicitly_skipped == 2
+    assert skipped.n_missing == 0
     assert skipped.skip_info == {
         "status": "Skipped - Missing dependencies",
         "missing_files": "shared missing-file details",
@@ -247,26 +247,36 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
     legacy_skipped = derived_runs[cached_runs["legacy-skipped-run"].id]
     assert legacy_skipped.dashboard_status == "skipped"
     assert legacy_skipped.n_skipped == 2
-    assert legacy_skipped.n_explicitly_skipped == 2
+    assert legacy_skipped.n_missing == 0
     assert legacy_skipped.skip_info == {
         "skip_reason": "Skipped because a legacy SkipReason was returned"
     }
 
     different_skip_info = derived_runs[cached_runs["different-skip-info-run"].id]
-    assert different_skip_info.n_explicitly_skipped == 2
+    assert different_skip_info.n_skipped == 2
     assert different_skip_info.skip_info is None
 
     planned_only = derived_runs[cached_runs["planned-only-run"].id]
     assert planned_only.dashboard_status == "skipped"
     assert planned_only.n_expected == 1
     assert planned_only.n_materialized == 0
-    assert planned_only.n_skipped == 1
-    assert planned_only.n_explicitly_skipped == 0
+    assert planned_only.n_skipped == 0
+    assert planned_only.n_missing == 1
 
     planned_override = derived_runs[cached_runs["planned-overrides-selection-run"].id]
     assert planned_override.dashboard_status == "skipped"
     assert planned_override.n_expected == 1
-    assert planned_override.n_skipped == 1
+    assert planned_override.n_missing == 1
+
+    for derived in derived_runs.values():
+        if derived.n_expected is None:
+            continue
+        assert derived.n_materialized is not None
+        assert derived.n_skipped is not None
+        assert derived.n_missing is not None
+        assert derived.n_expected == (
+            derived.n_materialized + derived.n_skipped + derived.n_missing
+        )
 
     assert len(events) == 10
     planned_event = next(

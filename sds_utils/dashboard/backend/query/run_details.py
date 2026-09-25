@@ -293,7 +293,7 @@ def _asset_key(asset_path: tuple[str, ...] | None) -> str | None:
 def _explicit_skip_summary(
     events: list[_RelevantEvent],
     *,
-    expected_assets: set[tuple[str, ...]],
+    non_materialized_assets: set[tuple[str, ...]],
 ) -> tuple[int, dict[str, str] | None]:
     legacy_skips = [
         event for event in events if event.event_type == LEGACY_SKIP_EVENT_TYPE
@@ -303,22 +303,22 @@ def _explicit_skip_summary(
         for event in events
         if event.event_type == "ObservationEvent"
         and event.skip_reason is not None
-        and event.asset_path in expected_assets
+        and event.asset_path in non_materialized_assets
     ]
 
     if legacy_skips:
-        n_explicitly_skipped = len(expected_assets)
+        n_skipped = len(non_materialized_assets)
         skip_payloads = [event.metadata for event in legacy_skips]
         skip_payloads.extend(event.metadata for event in observation_skips)
     else:
-        n_explicitly_skipped = len({event.asset_path for event in observation_skips})
+        n_skipped = len({event.asset_path for event in observation_skips})
         skip_payloads = [event.metadata for event in observation_skips]
 
     if not skip_payloads or any(
         payload != skip_payloads[0] for payload in skip_payloads[1:]
     ):
-        return n_explicitly_skipped, None
-    return n_explicitly_skipped, skip_payloads[0]
+        return n_skipped, None
+    return n_skipped, skip_payloads[0]
 
 
 def _derive_run(
@@ -349,12 +349,14 @@ def _derive_run(
         planned_assets or selected_assets or materialized_assets | observed_assets
     )
     n_expected = len(expected_assets)
-    n_materialized = len(materialized_assets & expected_assets)
-    n_skipped = n_expected - n_materialized
-    n_explicitly_skipped, skip_info = _explicit_skip_summary(
+    expected_materializations = materialized_assets & expected_assets
+    non_materialized_assets = expected_assets - expected_materializations
+    n_materialized = len(expected_materializations)
+    n_skipped, skip_info = _explicit_skip_summary(
         events,
-        expected_assets=expected_assets,
+        non_materialized_assets=non_materialized_assets,
     )
+    n_missing = len(non_materialized_assets) - n_skipped
 
     return DerivedJobRun(
         cached_run_id=cached_run.id,
@@ -368,7 +370,7 @@ def _derive_run(
         n_expected=n_expected,
         n_materialized=n_materialized,
         n_skipped=n_skipped,
-        n_explicitly_skipped=n_explicitly_skipped,
+        n_missing=n_missing,
         skip_info=skip_info,
     )
 

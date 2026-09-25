@@ -111,7 +111,7 @@ class DerivedJobRun(SQLModel, table=True):
     n_expected: int | None = None
     n_materialized: int | None = None
     n_skipped: int | None = None
-    n_explicitly_skipped: int | None = None
+    n_missing: int | None = None
     skip_info: dict[str, str] | None = Field(
         default=None,
         sa_column=Column(JSON, nullable=True),
