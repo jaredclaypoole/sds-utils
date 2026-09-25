@@ -8,7 +8,9 @@ from typing import Any, Self
 import pandas as pd
 from nicegui import ui
 from nicegui.elements.checkbox import Checkbox
+from nicegui.elements.menu import Menu
 from nicegui.elements.table import Table
+from nicegui.events import ValueChangeEventArguments
 
 from ..backend.filtersbase import (
     FilterBase,
@@ -43,6 +45,7 @@ class StringFilterMenu(UIElem):
         self.selected = set(self.values)
         self.on_change = on_change
         self._updating = False
+        self._menu_dirty = False
         self.hierarchy = filter_.hierarchy or StrHierarchySpec(hierarchy={})
         self.nodes: list[CheckboxNode] = []
 
@@ -103,7 +106,7 @@ class StringFilterMenu(UIElem):
                 if grouping_enabled is False:
                     button.classes("text-blue-3")
                 with button:
-                    with ui.menu():
+                    with self._menu():
                         if grouping_enabled is not None:
                             action = (
                                 "Disable grouping"
@@ -121,8 +124,31 @@ class StringFilterMenu(UIElem):
     def render_dropdown(self, label: str, *, disabled: bool = False) -> None:
         """Render this filter as a standalone dropdown control."""
         props = "outline no-caps disable" if disabled else "outline no-caps"
-        with ui.dropdown_button(label, icon=self._filter_icon()).props(props):
+        dropdown = ui.dropdown_button(
+            label,
+            icon=self._filter_icon(),
+            on_value_change=self._menu_visibility_changed,
+        ).props(props)
+        dropdown.on("keydown.enter", dropdown.close)
+        with dropdown:
             self.build()
+
+    def _menu(self) -> Menu:
+        """Create a menu that submits accumulated changes when dismissed."""
+        menu = ui.menu()
+        menu.on_value_change(self._menu_visibility_changed)
+        menu.on("keydown.enter", menu.close)
+        return menu
+
+    def _menu_visibility_changed(
+        self,
+        event: ValueChangeEventArguments[bool],
+    ) -> None:
+        if event.value:
+            self._menu_dirty = False
+        elif self._menu_dirty:
+            self._menu_dirty = False
+            self.on_change()
 
     def _filter_icon(self) -> str:
         """Return a solid funnel for active filters and an outline otherwise."""
@@ -195,7 +221,7 @@ class StringFilterMenu(UIElem):
         else:
             self.selected.difference_update(node.values)
         self._sync_checkboxes()
-        self.on_change()
+        self._menu_dirty = True
 
     def _sync_checkboxes(self) -> None:
         self._updating = True
