@@ -99,7 +99,7 @@ class StringFilterMenu(UIElem):
                 props = (
                     "flat dense no-caps disable" if disabled else "flat dense no-caps"
                 )
-                button = ui.button(label, icon="filter_list").props(props)
+                button = ui.button(label, icon=self._filter_icon()).props(props)
                 if grouping_enabled is False:
                     button.classes("text-blue-3")
                 with button:
@@ -121,8 +121,12 @@ class StringFilterMenu(UIElem):
     def render_dropdown(self, label: str, *, disabled: bool = False) -> None:
         """Render this filter as a standalone dropdown control."""
         props = "outline no-caps disable" if disabled else "outline no-caps"
-        with ui.dropdown_button(label, icon="filter_list").props(props):
+        with ui.dropdown_button(label, icon=self._filter_icon()).props(props):
             self.build()
+
+    def _filter_icon(self) -> str:
+        """Return a solid funnel for active filters and an outline otherwise."""
+        return "filter_alt" if self.arguments() is not None else "o_filter_alt"
 
     def _build_nodes(self, spec: StrHierarchySpec) -> list[CheckboxNode]:
         hierarchy = spec.build_hierarchy(self.values)
