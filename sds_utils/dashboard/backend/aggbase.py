@@ -42,7 +42,7 @@ class Aggregator:
                 raise NotImplementedError(agg_spec.preset)
 
         horiz_cols = [horiz_col] if horiz_col is not None else []
-        cols_to_keep = ["start_date", *horiz_cols, *agg_spec.extra_columns]
+        cols_to_keep = ["start_date", "end_date", *horiz_cols, *agg_spec.extra_columns]
         cols_to_keep = list(dict.fromkeys(cols_to_keep))
 
         def _make_status_counts(statuses: pd.Series) -> StatusCounts:
@@ -64,14 +64,14 @@ class Aggregator:
                 )
             snapshot_df = grouped_df.pivot_table(
                 columns=horiz_col,
-                index="start_date",
+                index="start_date end_date".split(),
                 values="status_counts",
                 aggfunc="sum",
             )
             return snapshot_df.sort_index(ascending=False)
         else:
             return grouped_df.sort_values(
-                "start_date",
+                "start_date end_date".split(),
                 ascending=False,
                 kind="stable",
                 ignore_index=True,
