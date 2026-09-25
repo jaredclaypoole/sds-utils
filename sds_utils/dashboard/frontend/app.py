@@ -6,10 +6,10 @@ from nicegui import ui
 from sqlmodel import Session, select
 
 from ..backend.db import create_db_and_tables, engine
-from ..backend.db.models import PersistentSettings, UserProfile
+from ..backend.db.models import UserProfile
 from ..backend.dbdata import DBDataSource
 from ..backend.filteredtable import FilteredTable
-from ..backend.settings import DashboardSettings
+from ..backend.settings_repository import SettingsRepository
 from .filteredtableview import FilteredTableView
 from .login import LoginView, dashboard_url, ensure_user_profile
 from .uielem import UIElem
@@ -29,34 +29,14 @@ class TableApp(UIElem):
             dagster_namespace="prod",
         )
         table = FilteredTable(data_source)
-        settings = self._load_settings()
+        settings_repository = SettingsRepository(engine)
+        settings = settings_repository.load(self.user_id)
         self.table_view = FilteredTableView(
             table,
             dagster_url=os.environ["DAGSTER_BASE_URL"],
             settings=settings,
-            sync_settings=self._save_settings,
+            sync_settings=lambda value: settings_repository.save(self.user_id, value),
         ).build()
-
-    def _load_settings(self) -> DashboardSettings:
-        with Session(engine) as session:
-            stored = session.get(PersistentSettings, self.user_id)
-        if stored is None:
-            return DashboardSettings()
-        return stored.validated_settings()
-
-    def _save_settings(self, settings: DashboardSettings) -> None:
-        with Session(engine) as session:
-            stored = session.get(PersistentSettings, self.user_id)
-            settings_json = settings.model_dump(mode="json")
-            if stored is None:
-                stored = PersistentSettings(
-                    user_id=self.user_id,
-                    settings=settings_json,
-                )
-            else:
-                stored.settings = settings_json
-            session.add(stored)
-            session.commit()
 
 
 @ui.page("/")

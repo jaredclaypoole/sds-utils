@@ -1,0 +1,165 @@
+"""NiceGUI rendering for dashboard dataframes."""
+
+import json
+from collections.abc import Callable
+
+import pandas as pd
+from nicegui import ui
+
+from .filtercontrols import FilterControls
+from .status import (
+    SNAPSHOT_TOTAL_CLASS,
+    SNAPSHOT_ZERO_CLASS,
+    STATUS_BADGE_COLORS,
+    format_status_counts,
+    status_count_columns,
+)
+
+
+class DashboardTableRenderer:
+    """Render dashboard dataframes with specialized cells and headers."""
+
+    def __init__(self, dagster_url: str) -> None:
+        self.dagster_url = dagster_url.rstrip("/")
+
+    def display_data(self, data_df: pd.DataFrame) -> pd.DataFrame:
+        """Remove internal fields and format display-only date columns."""
+        cols_to_hide = [
+            "asset",
+            "partition",
+            "partition_prefix",
+            "job_name",
+            "job_key",
+            "tags",
+            "selected_assets",
+            "parent_run_id",
+            "root_run_id",
+        ]
+        display_df = data_df.drop(columns=cols_to_hide, errors="ignore")
+        if any(name is not None for name in display_df.index.names):
+            display_df = display_df.reset_index()
+        for column in ("start_date", "end_date"):
+            if column in display_df.columns:
+                display_df[column] = display_df[column].dt.strftime("%Y-%m-%d")
+        return display_df
+
+    def render(
+        self,
+        display_df: pd.DataFrame,
+        *,
+        filter_controls: FilterControls,
+        disabled_filters: set[str],
+        drilldown_filter: str | None,
+        on_drill_down: Callable[[str], None],
+    ) -> None:
+        """Render a prepared dataframe in the current NiceGUI container."""
+        status_columns = status_count_columns(display_df)
+        table_df = display_df.copy()
+        for column in status_columns:
+            table_df[column] = format_status_counts(table_df[column])
+
+        self.table = ui.table.from_pandas(
+            table_df.reset_index(drop=True),
+            pagination=25,
+        ).classes("w-full shadow-none border rounded-lg")
+        for column in status_columns:
+            for row, value in zip(self.table.rows, table_df[column], strict=True):
+                row[column] = value
+        self.table.props("flat bordered separator=horizontal wrap-cells")
+        self._render_run_links(table_df)
+        self._render_partition_links()
+        self._render_status_badges()
+        self._render_status_counts(status_columns)
+        if drilldown_filter is not None:
+            self._render_drill_down_headers(status_columns, on_drill_down)
+        filter_controls.render_headers(
+            self.table,
+            display_df.columns,
+            disabled=disabled_filters,
+        )
+
+    def _render_run_links(self, table_df: pd.DataFrame) -> None:
+        if "run_id" not in table_df.columns:
+            return
+        dagster_url = json.dumps(self.dagster_url)
+        self.table.add_slot(
+            "body-cell-run_id",
+            f"""
+            <q-td :props="props">
+                <a
+                    :href='{dagster_url} + "/runs/" + props.value'
+                    class="text-blue-8"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >{{{{ props.value.slice(0, 8) }}}}</a>
+            </q-td>
+            """,
+        )
+
+    def _render_partition_links(self) -> None:
+        self.table.add_slot(
+            "body-cell-partition_link",
+            """
+            <q-td :props="props">
+                <a
+                    :href="props.value"
+                    class="text-blue-8"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >link</a>
+            </q-td>
+            """,
+        )
+
+    def _render_status_badges(self) -> None:
+        badge_colors = json.dumps(STATUS_BADGE_COLORS)
+        self.table.add_slot(
+            "body-cell-status",
+            f"""
+            <q-td :props="props">
+                <q-badge
+                    :color='({badge_colors})[props.value]'
+                    :label="props.value"
+                    outline
+                />
+            </q-td>
+            """,
+        )
+
+    def _render_status_counts(self, columns: list[str]) -> None:
+        for column in columns:
+            self.table.add_slot(
+                f"body-cell-{column}",
+                f"""
+                <q-td :props="props">
+                    <template v-if="Array.isArray(props.value)">
+                        <span :class="props.value[0].class">
+                            {{{{ props.value[0].text }}}}
+                        </span><span class="{SNAPSHOT_TOTAL_CLASS}">: </span>
+                        <template
+                            v-for="(part, index) in props.value.slice(1)"
+                            :key="index"
+                        >
+                            <span
+                                v-if="index"
+                                class="{SNAPSHOT_ZERO_CLASS}"
+                            > / </span>
+                            <span :class="part.class">{{{{ part.text }}}}</span>
+                        </template>
+                    </template>
+                </q-td>
+                """,
+            )
+
+    def _render_drill_down_headers(
+        self,
+        columns: list[str],
+        on_drill_down: Callable[[str], None],
+    ) -> None:
+        for column in columns:
+            with self.table.add_slot(f"header-cell-{column}"):
+                with self.table.header(column):
+                    ui.button(
+                        column,
+                        on_click=lambda _event, value=column: on_drill_down(value),
+                    ).props("flat dense no-caps").classes("w-full")
