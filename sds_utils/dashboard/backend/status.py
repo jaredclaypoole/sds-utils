@@ -11,6 +11,7 @@ STATUS_ORDER = (
     "canceled",
     "failed",
     "skipped",
+    "missing",
     "not-run",
     "unknown",
     "not-found",
@@ -26,6 +27,7 @@ class StatusCounts(NamedTuple):
     canceled: int = 0
     failed: int = 0
     skipped: int = 0
+    missing: int = 0
     not_run: int = 0
     unknown: int = 0
     not_found: int = 0

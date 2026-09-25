@@ -203,7 +203,7 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs(
                         n_expected=2,
                         n_materialized=1,
                         n_skipped=1,
-                        n_missing=1,
+                        n_missing=0,
                     skip_info={
                         "status": "Skipped - Missing dependencies",
                         "missing_files": "imap_test_missing.cdf",
@@ -264,7 +264,7 @@ def test_query_builds_dashboard_dataframe_from_relevant_runs(
     assert successful_row["repoint"] == 343
     assert successful_row["n_expected"] == 2
     assert successful_row["n_skipped"] == 1
-    assert successful_row["n_missing"] == 1
+    assert successful_row["n_missing"] == 0
     assert successful_row["skip_reason"] == "Skipped - Missing dependencies"
     assert successful_row["missing_files"] == "imap_test_missing.cdf"
     assert successful_row["duration_seconds"] == 120

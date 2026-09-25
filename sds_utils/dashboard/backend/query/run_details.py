@@ -14,7 +14,7 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session, col, delete, select
 from tqdm.auto import tqdm
 
-from ..db import engine
+from ..db import create_db_and_tables, engine
 from ..db.models import (
     CachedDagsterRun,
     CachedRunEvent,
@@ -361,10 +361,12 @@ def _derive_run(
     return DerivedJobRun(
         cached_run_id=cached_run.id,
         dashboard_status=(
-            "materialized"
-            if n_expected > 0 and n_materialized == n_expected
+            "missing"
+            if n_missing > 0
             else "skipped"
-            if n_expected > 0
+            if n_skipped > 0
+            else "materialized"
+            if n_expected > 0 and n_materialized == n_expected
             else "not-found"
         ),
         n_expected=n_expected,
@@ -512,6 +514,7 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     parser.add_argument("--event-page-size", type=int, default=DEFAULT_EVENT_PAGE_SIZE)
     args = parser.parse_args()
+    create_db_and_tables()
     processed = asyncio.run(
         ingest_run_details(
             namespace_name=args.namespace,

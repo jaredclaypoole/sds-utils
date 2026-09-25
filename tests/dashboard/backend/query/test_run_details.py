@@ -226,7 +226,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
     assert materialized.skip_info is None
 
     partial = derived_runs[cached_runs["partial-run"].id]
-    assert partial.dashboard_status == "skipped"
+    assert partial.dashboard_status == "missing"
     assert partial.n_expected == 2
     assert partial.n_materialized == 1
     assert partial.n_skipped == 0
@@ -257,14 +257,14 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
     assert different_skip_info.skip_info is None
 
     planned_only = derived_runs[cached_runs["planned-only-run"].id]
-    assert planned_only.dashboard_status == "skipped"
+    assert planned_only.dashboard_status == "missing"
     assert planned_only.n_expected == 1
     assert planned_only.n_materialized == 0
     assert planned_only.n_skipped == 0
     assert planned_only.n_missing == 1
 
     planned_override = derived_runs[cached_runs["planned-overrides-selection-run"].id]
-    assert planned_override.dashboard_status == "skipped"
+    assert planned_override.dashboard_status == "missing"
     assert planned_override.n_expected == 1
     assert planned_override.n_missing == 1
 
