@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+import re
 
 import pandas as pd
 from sqlalchemy import Engine, func
@@ -96,6 +97,38 @@ def _status(run: CachedDagsterRun, derived: DerivedJobRun | None) -> str:
         )
         return "unknown"
     return status
+
+
+def _parse_missing_reason(missing_files: str | None) -> str | None:
+    """Determine missing_reason from the more verbose missing_files."""
+    if missing_files is None:
+        return None
+    lines = [line.strip() for line in missing_files.splitlines()]
+
+    prefix = "Missing "
+    if (
+        len(lines) == 2  # noqa: PLR2004
+        and lines[0] == "Not enough information to process."
+        and lines[1].startswith(prefix)
+    ):
+        return lines[1].removeprefix(prefix).split()[0]
+
+    prefix = "Missing SPICE files"
+    if len(lines) == 1 and lines[0].startswith(prefix):
+        return "SPICE"
+
+    regex = (
+        r"Hi Goodtimes: skipping repoint \d+ - pointing (\d+) does not exist yet, "
+        r"waiting for more data to fill in."
+    )
+    if len(lines) == 1 and (match := re.fullmatch(regex, lines[0])):
+        return f"pointing{match.group(1)}"
+
+    first_line = "Missing dependency for"
+    if len(lines) == 3 and lines[0] == first_line:  # noqa: PLR2004
+        return lines[1]
+
+    return missing_files
 
 
 def _skip_columns(
@@ -232,6 +265,7 @@ class DBDataSource(DataSourceBase):
                     "skip_info": skip_info,
                     "skip_reason": skip_reason,
                     "missing_files": missing_files,
+                    "missing_reason": _parse_missing_reason(missing_files),
                     "start_date": None,
                     "end_date": None,
                 }
