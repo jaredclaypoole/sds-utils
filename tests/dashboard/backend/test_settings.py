@@ -6,6 +6,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from sds_utils.dashboard.backend.aggbase import AggPreset
 from sds_utils.dashboard.backend.db.models import PersistentSettings, UserProfile
 from sds_utils.dashboard.backend.settings import DashboardSettings
+from sds_utils.dashboard.backend.settings_repository import SettingsRepository
 
 
 def test_dashboard_settings_have_safe_defaults() -> None:
@@ -60,3 +61,28 @@ def test_settings_tables_persist_valid_json() -> None:
 
     assert stored is not None
     assert stored.validated_settings() == settings
+
+
+def test_settings_repository_loads_defaults_and_round_trips_settings() -> None:
+    db_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(db_engine)
+    with Session(db_engine) as session:
+        profile = UserProfile(username="repository-user")
+        session.add(profile)
+        session.commit()
+        session.refresh(profile)
+    assert profile.id is not None
+    repository = SettingsRepository(db_engine)
+
+    assert repository.load(profile.id) == DashboardSettings()
+
+    settings = DashboardSettings(
+        filtering={"instrument": {"excluded_values_regex": "hit"}}
+    )
+    repository.save(profile.id, settings)
+
+    assert repository.load(profile.id) == settings
