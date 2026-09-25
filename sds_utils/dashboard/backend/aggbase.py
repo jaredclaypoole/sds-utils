@@ -7,6 +7,13 @@ from pydantic import BaseModel, Field
 
 from .status import StatusCounts
 
+DATES_SUMMARY_EXTRA_COLUMNS = (
+    "instrument",
+    "data_level",
+    "descriptor",
+    "missing_reason",
+)
+
 
 class AggPreset(StrEnum):
     """Supported raw and aggregated table layouts."""
@@ -51,7 +58,7 @@ class Aggregator:
             return StatusCounts(**kwargs)
 
         grouped_df = pd.DataFrame(
-            data_df.groupby(cols_to_keep)
+            data_df.groupby(cols_to_keep, dropna=False)
             .status.apply(_make_status_counts)
             .rename("status_counts")
         ).reset_index()

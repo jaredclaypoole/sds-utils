@@ -2,11 +2,13 @@
 
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import pandas as pd
 from nicegui import ui
 
-from .filtercontrols import FilterControls
+from ..backend.aggbase import DATES_SUMMARY_EXTRA_COLUMNS, AggPreset, AggSpec
+from .filtercontrols import FilterControls, GroupingControls
 from .status import (
     SNAPSHOT_TOTAL_CLASS,
     SNAPSHOT_ZERO_CLASS,
@@ -16,13 +18,28 @@ from .status import (
 )
 
 
+@dataclass(frozen=True)
+class TableRenderOptions:
+    """Callbacks and state controlling interactive table headers."""
+
+    disabled_filters: set[str]
+    drilldown_filter: str | None
+    on_drill_down: Callable[[str], None]
+    agg_spec: AggSpec
+    on_toggle_grouping: Callable[[str], None]
+
+
 class DashboardTableRenderer:
     """Render dashboard dataframes with specialized cells and headers."""
 
     def __init__(self, dagster_url: str) -> None:
         self.dagster_url = dagster_url.rstrip("/")
 
-    def display_data(self, data_df: pd.DataFrame) -> pd.DataFrame:
+    def display_data(
+        self,
+        data_df: pd.DataFrame,
+        agg_spec: AggSpec,
+    ) -> pd.DataFrame:
         """Remove internal fields and format display-only date columns."""
         cols_to_hide = [
             "asset",
@@ -41,6 +58,19 @@ class DashboardTableRenderer:
         for column in ("start_date", "end_date"):
             if column in display_df.columns:
                 display_df[column] = display_df[column].dt.strftime("%Y-%m-%d")
+        if agg_spec.preset is AggPreset.DATES_SUMMARY:
+            for column in DATES_SUMMARY_EXTRA_COLUMNS:
+                if column not in display_df:
+                    display_df[column] = None
+            fixed = [
+                *DATES_SUMMARY_EXTRA_COLUMNS,
+                "start_date",
+                "end_date",
+                "status_counts",
+            ]
+            ordered = [column for column in fixed if column in display_df]
+            ordered.extend(column for column in display_df if column not in ordered)
+            display_df = display_df.loc[:, ordered]
         return display_df
 
     def render(
@@ -48,9 +78,7 @@ class DashboardTableRenderer:
         display_df: pd.DataFrame,
         *,
         filter_controls: FilterControls,
-        disabled_filters: set[str],
-        drilldown_filter: str | None,
-        on_drill_down: Callable[[str], None],
+        options: TableRenderOptions,
     ) -> None:
         """Render a prepared dataframe in the current NiceGUI container."""
         status_columns = status_count_columns(display_df)
@@ -70,12 +98,20 @@ class DashboardTableRenderer:
         self._render_partition_links()
         self._render_status_badges()
         self._render_status_counts(status_columns)
-        if drilldown_filter is not None:
-            self._render_drill_down_headers(status_columns, on_drill_down)
+        if options.drilldown_filter is not None:
+            self._render_drill_down_headers(status_columns, options.on_drill_down)
+        grouping = None
+        if options.agg_spec.preset is AggPreset.DATES_SUMMARY:
+            grouping = GroupingControls(
+                columns=set(DATES_SUMMARY_EXTRA_COLUMNS),
+                enabled=set(options.agg_spec.extra_columns),
+                on_toggle=options.on_toggle_grouping,
+            )
         filter_controls.render_headers(
             self.table,
             display_df.columns,
-            disabled=disabled_filters,
+            disabled=options.disabled_filters,
+            grouping=grouping,
         )
 
     def _render_run_links(self, table_df: pd.DataFrame) -> None:

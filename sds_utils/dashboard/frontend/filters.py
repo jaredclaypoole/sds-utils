@@ -90,6 +90,8 @@ class StringFilterMenu(UIElem):
         label: str,
         *,
         disabled: bool = False,
+        grouping_enabled: bool | None = None,
+        on_toggle_grouping: Callable[[], None] | None = None,
     ) -> None:
         """Render this filter as a dropdown in its table column header."""
         with table.add_slot(f"header-cell-{self.filter.name}"):
@@ -97,8 +99,23 @@ class StringFilterMenu(UIElem):
                 props = (
                     "flat dense no-caps disable" if disabled else "flat dense no-caps"
                 )
-                with ui.button(label, icon="filter_list").props(props):
+                button = ui.button(label, icon="filter_list").props(props)
+                if grouping_enabled is False:
+                    button.classes("text-blue-3")
+                with button:
                     with ui.menu():
+                        if grouping_enabled is not None:
+                            action = (
+                                "Disable grouping"
+                                if grouping_enabled
+                                else "Enable grouping"
+                            )
+                            ui.button(
+                                action,
+                                icon="view_column",
+                                on_click=on_toggle_grouping,
+                            ).props("flat no-caps").classes("w-full")
+                            ui.separator()
                         self.build()
 
     def render_dropdown(self, label: str, *, disabled: bool = False) -> None:

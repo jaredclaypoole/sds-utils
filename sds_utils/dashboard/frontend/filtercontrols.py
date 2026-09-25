@@ -1,6 +1,8 @@
 """Coordination for the dashboard's registered frontend filters."""
 
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from functools import partial
 
 import pandas as pd
 from nicegui.elements.table import Table
@@ -11,6 +13,15 @@ from ..backend.filtersbase import (
     StringRegisteredFilter,
 )
 from .filters import StringFilterMenu
+
+
+@dataclass(frozen=True)
+class GroupingControls:
+    """Describe optional grouping controls attached to filter headers."""
+
+    columns: set[str]
+    enabled: set[str]
+    on_toggle: Callable[[str], None]
 
 
 class FilterControls:
@@ -75,6 +86,7 @@ class FilterControls:
         displayed_columns: Iterable[str],
         *,
         disabled: set[str],
+        grouping: GroupingControls | None = None,
     ) -> None:
         """Render filters integrated into matching table column headers."""
         displayed = set(displayed_columns)
@@ -84,8 +96,16 @@ class FilterControls:
                 continue
             if not isinstance(menu.filter, StringRegisteredFilter):
                 raise ValueError(f"Unrecognized filter type: {type(menu.filter)}")
+            is_grouping_column = grouping is not None and name in grouping.columns
+            toggle_grouping = (
+                partial(grouping.on_toggle, name) if grouping is not None else None
+            )
             menu.render_header(
                 table,
                 labels[name],
                 disabled=name in disabled,
+                grouping_enabled=(name in grouping.enabled)
+                if is_grouping_column and grouping is not None
+                else None,
+                on_toggle_grouping=toggle_grouping if is_grouping_column else None,
             )

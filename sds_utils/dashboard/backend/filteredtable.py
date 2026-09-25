@@ -4,6 +4,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 
 import pandas as pd
+from pydantic import BaseModel
 
 from .aggbase import (
     Aggregator,
@@ -18,7 +19,7 @@ from .filtersbase import (
 )
 
 
-class SortSpec:
+class SortSpec(BaseModel):
     """Lightweight specification for sorting options."""
 
     ascending: bool = True
@@ -50,6 +51,8 @@ class Filters(FiltersBase):
             hierarchy=_make_data_level_hierachy,
         ),
     )
+    descriptor = StringRegisteredFilter.property()
+    missing_reason = StringRegisteredFilter.property()
     partition_label = StringRegisteredFilter.property(
         hierarchy=StrHierarchySpec(
             hierarchy=dict(

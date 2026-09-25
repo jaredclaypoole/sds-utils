@@ -3,7 +3,7 @@
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-from sds_utils.dashboard.backend.aggbase import AggPreset
+from sds_utils.dashboard.backend.aggbase import AggPreset, AggSpec
 from sds_utils.dashboard.backend.db.models import PersistentSettings, UserProfile
 from sds_utils.dashboard.backend.settings import DashboardSettings
 from sds_utils.dashboard.backend.settings_repository import SettingsRepository
@@ -12,8 +12,10 @@ from sds_utils.dashboard.backend.settings_repository import SettingsRepository
 def test_dashboard_settings_have_safe_defaults() -> None:
     settings = DashboardSettings()
 
-    assert settings.agg.preset == AggPreset.RAW
-    assert settings.agg.extra_columns == []
+    assert settings.active_agg_preset == AggPreset.RAW
+    assert settings.agg_specs == {
+        preset: AggSpec(preset=preset) for preset in AggPreset
+    }
     assert settings.filtering == {}
 
 
@@ -21,14 +23,24 @@ def test_faulty_stored_field_falls_back_without_discarding_valid_fields() -> Non
     stored = PersistentSettings(
         user_id=1,
         settings={
-            "agg": {"preset": "not-a-preset"},
+            "active_agg_preset": "dates_summary",
+            "agg_specs": {
+                "dates_summary": {"preset": "not-a-preset"},
+                "instruments_snapshot": {"preset": "instruments_snapshot"},
+            },
             "filtering": {"status": {"excluded_values_regex": "failed"}},
         },
     )
 
     settings = stored.validated_settings()
 
-    assert settings.agg == DashboardSettings().agg
+    assert settings.active_agg_preset is AggPreset.DATES_SUMMARY
+    assert settings.agg_specs[AggPreset.DATES_SUMMARY] == AggSpec(
+        preset=AggPreset.DATES_SUMMARY
+    )
+    assert settings.agg_specs[AggPreset.INSTRUMENTS_SNAPSHOT] == AggSpec(
+        preset=AggPreset.INSTRUMENTS_SNAPSHOT
+    )
     assert settings.filtering == {
         "status": {"excluded_values_regex": "failed"}
     }
@@ -81,8 +93,30 @@ def test_settings_repository_loads_defaults_and_round_trips_settings() -> None:
     assert repository.load(profile.id) == DashboardSettings()
 
     settings = DashboardSettings(
-        filtering={"instrument": {"excluded_values_regex": "hit"}}
+        active_agg_preset=AggPreset.DATES_SUMMARY,
+        agg_specs={
+            AggPreset.DATES_SUMMARY: AggSpec(
+                preset=AggPreset.DATES_SUMMARY,
+                extra_columns=["instrument", "descriptor"],
+            )
+        },
+        filtering={"instrument": {"excluded_values_regex": "hit"}},
     )
     repository.save(profile.id, settings)
 
     assert repository.load(profile.id) == settings
+
+
+def test_legacy_aggregation_settings_fall_back_to_defaults() -> None:
+    settings = DashboardSettings.from_stored(
+        {
+            "agg": {
+                "preset": "data_levels_snapshot",
+                "extra_columns": [],
+            },
+            "dates_summary_extra_columns": ["instrument", "descriptor"],
+            "filtering": {"status": {"excluded_values_regex": "failed"}},
+        }
+    )
+
+    assert settings == DashboardSettings()

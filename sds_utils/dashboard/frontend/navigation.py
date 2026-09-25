@@ -8,7 +8,7 @@ from typing import Any
 from nicegui import ui
 from nicegui.events import ValueChangeEventArguments
 
-from ..backend.aggbase import AggPreset, AggSpec
+from ..backend.aggbase import DATES_SUMMARY_EXTRA_COLUMNS, AggPreset, AggSpec
 from ..backend.filtersbase import FilterArguments
 from .uielem import UIElem
 
@@ -35,8 +35,17 @@ class PaneState:
 class PaneNavigator(UIElem):
     """Manage summary panes, drill-down history, and temporary filters."""
 
-    def __init__(self, agg_spec: AggSpec, on_change: Callable[[], None]) -> None:
-        self.agg_spec = agg_spec
+    def __init__(
+        self,
+        active_preset: AggPreset,
+        agg_specs: dict[AggPreset, AggSpec],
+        on_change: Callable[[], None],
+    ) -> None:
+        self._agg_specs = {
+            preset: agg_specs.get(preset, AggSpec(preset=preset)).model_copy(deep=True)
+            for preset in AggPreset
+        }
+        self.agg_spec = self._agg_specs[active_preset].model_copy(deep=True)
         self.temporary_filters: dict[str, str] = {}
         self._history: list[PaneState] = []
         self._on_change = on_change
@@ -52,6 +61,14 @@ class PaneNavigator(UIElem):
         """Return the field represented by clickable columns in this pane."""
         drilldown = _DRILLDOWNS.get(self.agg_spec.preset)
         return drilldown[0] if drilldown is not None else None
+
+    @property
+    def agg_specs(self) -> dict[AggPreset, AggSpec]:
+        """Return a copy of the last-used specification for every preset."""
+        return {
+            preset: spec.model_copy(deep=True)
+            for preset, spec in self._agg_specs.items()
+        }
 
     def render(self) -> None:
         """Render the summary selector and navigation controls."""
@@ -93,23 +110,50 @@ class PaneNavigator(UIElem):
             )
         )
         self.temporary_filters[filter_name] = value
-        self.agg_spec = AggSpec(preset=next_preset)
+        self._activate_preset(next_preset)
         self._set_select(next_preset)
+        self._state_changed()
+
+    def toggle_extra_column(self, column: str) -> None:
+        """Toggle an optional dates-summary grouping column."""
+        if (
+            self.agg_spec.preset is not AggPreset.DATES_SUMMARY
+            or column not in DATES_SUMMARY_EXTRA_COLUMNS
+        ):
+            return
+        enabled = set(self.agg_spec.extra_columns)
+        if column in enabled:
+            enabled.remove(column)
+        else:
+            enabled.add(column)
+        extra_columns = [
+            name for name in DATES_SUMMARY_EXTRA_COLUMNS if name in enabled
+        ]
+        self.agg_spec = self.agg_spec.model_copy(
+            update={"extra_columns": extra_columns}
+        )
+        self._agg_specs[self.agg_spec.preset] = self.agg_spec.model_copy(deep=True)
         self._state_changed()
 
     def _select_preset(self, event: ValueChangeEventArguments[Any]) -> None:
         if self._setting_select:
             return
-        self.agg_spec = AggSpec(preset=AggPreset(event.value))
+        self._activate_preset(AggPreset(event.value))
         self.temporary_filters.clear()
         self._history.clear()
         self._state_changed()
+
+    def _activate_preset(self, preset: AggPreset) -> None:
+        """Activate the last-used specification for a preset."""
+        self._agg_specs[self.agg_spec.preset] = self.agg_spec.model_copy(deep=True)
+        self.agg_spec = self._agg_specs[preset].model_copy(deep=True)
 
     def _go_back(self) -> None:
         if not self._history:
             return
         state = self._history.pop()
         self.agg_spec = state.agg_spec
+        self._agg_specs[self.agg_spec.preset] = self.agg_spec.model_copy(deep=True)
         self.temporary_filters = state.temporary_filters
         self._set_select(self.agg_spec.preset)
         self._state_changed()

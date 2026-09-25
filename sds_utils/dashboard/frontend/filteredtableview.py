@@ -12,14 +12,16 @@ from ..backend.settings import DashboardSettings
 from .filtercontrols import FilterControls
 from .navigation import PaneNavigator
 from .status import StatusSummary
-from .tablerenderer import DashboardTableRenderer
+from .tablerenderer import DashboardTableRenderer, TableRenderOptions
 from .uielem import UIElem
 
 _SORT_SPECS = {
     "instrument": SortSpec(),
     "data_level": SortSpec(),
     "descriptor": SortSpec(),
-    "start_time": SortSpec(),
+    "start_time": SortSpec(ascending=False),
+    "start_date": SortSpec(ascending=False),
+    "end_date": SortSpec(ascending=False),
 }
 
 
@@ -58,7 +60,11 @@ class FilteredTableView(FilteredTableViewBase):
             initial_arguments=self.settings.filtering,
             on_change=self.update_table,
         )
-        self.navigator = PaneNavigator(self.settings.agg, self.update_table).build()
+        self.navigator = PaneNavigator(
+            self.settings.active_agg_preset,
+            self.settings.agg_specs,
+            self.update_table,
+        ).build()
         self.status_summary = StatusSummary(self.filters.menus["status"]).build()
         self.standalone_filters_container = ui.row().classes(
             "w-full items-center gap-3 flex-wrap"
@@ -92,7 +98,7 @@ class FilteredTableView(FilteredTableViewBase):
             agg_spec=self.navigator.agg_spec,
             sort_specs=_SORT_SPECS,
         )
-        display_df = self.renderer.display_data(data_df)
+        display_df = self.renderer.display_data(data_df, self.navigator.agg_spec)
 
         self.standalone_filters_container.clear()
         with self.standalone_filters_container:
@@ -106,15 +112,20 @@ class FilteredTableView(FilteredTableViewBase):
             self.renderer.render(
                 display_df,
                 filter_controls=self.filters,
-                disabled_filters=self.navigator.disabled_filters,
-                drilldown_filter=self.navigator.drilldown_filter,
-                on_drill_down=self.navigator.drill_down,
+                options=TableRenderOptions(
+                    disabled_filters=self.navigator.disabled_filters,
+                    drilldown_filter=self.navigator.drilldown_filter,
+                    on_drill_down=self.navigator.drill_down,
+                    agg_spec=self.navigator.agg_spec,
+                    on_toggle_grouping=self.navigator.toggle_extra_column,
+                ),
             )
 
         self.status_summary.update(self.full_data_df, filtered_df)
         self._sync_settings(
             DashboardSettings(
-                agg=self.navigator.agg_spec,
+                active_agg_preset=self.navigator.agg_spec.preset,
+                agg_specs=self.navigator.agg_specs,
                 filtering=persistent_filters,
             )
         )
