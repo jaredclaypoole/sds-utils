@@ -2,8 +2,10 @@
 
 import datetime
 import json
+import re
 from abc import abstractmethod
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
@@ -28,6 +30,12 @@ from .status import (
     status_count_columns,
 )
 from .uielem import UIElem
+
+
+@dataclass(frozen=True)
+class _PaneState:
+    agg_spec: AggSpec
+    temporary_filters: dict[str, str]
 
 
 class FilteredTableViewBase(UIElem):
@@ -56,6 +64,9 @@ class FilteredTableView(FilteredTableViewBase):
         self.table = table
         self.dagster_url = dagster_url.rstrip("/")
         self.agg_spec = settings.agg
+        self.temporary_filters: dict[str, str] = {}
+        self._pane_history: list[_PaneState] = []
+        self._setting_summary_view = False
         self._initial_filtering: FilterArguments | None = settings.filtering
         self._sync_settings = sync_settings
 
@@ -117,6 +128,7 @@ class FilteredTableView(FilteredTableViewBase):
             arguments = menu.arguments()
             if arguments is not None:
                 filter_arguments[name] = arguments
+        effective_arguments = self._with_temporary_filters(filter_arguments)
 
         sort_specs = dict(
             instrument=SortSpec(),
@@ -125,9 +137,9 @@ class FilteredTableView(FilteredTableViewBase):
             start_time=SortSpec(),
         )
 
-        filtered_df = self.table.transform_data(filter_arguments)
+        filtered_df = self.table.transform_data(effective_arguments)
         data_df = self.table.transform_data(
-            filter_kwargs=filter_arguments,
+            filter_kwargs=effective_arguments,
             agg_spec=self.agg_spec,
             sort_specs=sort_specs,
         )
@@ -135,9 +147,13 @@ class FilteredTableView(FilteredTableViewBase):
 
         self.standalone_filters_container.clear()
         with self.standalone_filters_container:
+            self._render_navigation()
             for name, menu in self.filter_menus.items():
                 if name not in display_df.columns:
-                    menu.render_dropdown(name.replace("_", " ").title())
+                    menu.render_dropdown(
+                        name.replace("_", " ").title(),
+                        disabled=name in self.temporary_filters,
+                    )
 
         self.table_container.clear()
         with self.table_container:
@@ -154,7 +170,77 @@ class FilteredTableView(FilteredTableViewBase):
         self,
         event: ValueChangeEventArguments[Any],
     ) -> None:
+        if self._setting_summary_view:
+            return
         self.agg_spec = AggSpec(preset=AggPreset(event.value))
+        self.temporary_filters.clear()
+        self._pane_history.clear()
+        self.update_table()
+
+    def _with_temporary_filters(
+        self,
+        filter_arguments: FilterArguments,
+    ) -> FilterArguments:
+        effective = {
+            name: arguments.copy() for name, arguments in filter_arguments.items()
+        }
+        for name, value in self.temporary_filters.items():
+            effective.setdefault(name, {})["included_values_regex"] = re.escape(value)
+        return effective
+
+    def _render_navigation(self) -> None:
+        if self._pane_history:
+            ui.button("Back", icon="arrow_back", on_click=self._go_back).props(
+                "flat no-caps"
+            )
+        for name, value in self.temporary_filters.items():
+            label = name.replace("_", " ").title()
+            ui.chip(
+                f"{label}: {value}",
+                removable=True,
+                on_value_change=lambda event, filter_name=name: (
+                    self._remove_temporary_filter(filter_name)
+                    if not event.value
+                    else None
+                ),
+            ).props("outline")
+
+    def _drill_down(
+        self,
+        *,
+        filter_name: str,
+        value: str,
+        next_preset: AggPreset,
+    ) -> None:
+        self._pane_history.append(
+            _PaneState(
+                agg_spec=self.agg_spec.model_copy(deep=True),
+                temporary_filters=self.temporary_filters.copy(),
+            )
+        )
+        self.temporary_filters[filter_name] = value
+        self.agg_spec = AggSpec(preset=next_preset)
+        self._set_summary_view(next_preset)
+        self.update_table()
+
+    def _go_back(self) -> None:
+        if not self._pane_history:
+            return
+        state = self._pane_history.pop()
+        self.agg_spec = state.agg_spec
+        self.temporary_filters = state.temporary_filters
+        self._set_summary_view(self.agg_spec.preset)
+        self.update_table()
+
+    def _set_summary_view(self, preset: AggPreset) -> None:
+        self._setting_summary_view = True
+        try:
+            self.summary_view.value = preset.value
+        finally:
+            self._setting_summary_view = False
+
+    def _remove_temporary_filter(self, name: str) -> None:
+        self.temporary_filters.pop(name, None)
         self.update_table()
 
     def _build_table(self, display_df: pd.DataFrame) -> None:
@@ -239,6 +325,7 @@ class FilteredTableView(FilteredTableViewBase):
                 </q-td>
                 """,
             )
+        self._render_drill_down_headers(status_columns)
         column_labels = {
             column["name"]: column["label"] for column in self.table_elem.columns
         }
@@ -249,7 +336,34 @@ class FilteredTableView(FilteredTableViewBase):
                 continue
 
             menu = self.filter_menus[filter_.name]
-            menu.render_header(self.table_elem, column_labels[filter_.name])
+            menu.render_header(
+                self.table_elem,
+                column_labels[filter_.name],
+                disabled=filter_.name in self.temporary_filters,
+            )
+
+    def _render_drill_down_headers(self, columns: list[str]) -> None:
+        match self.agg_spec.preset:
+            case AggPreset.INSTRUMENTS_SNAPSHOT:
+                filter_name = "instrument"
+                next_preset = AggPreset.DATA_LEVELS_SNAPSHOT
+            case AggPreset.DATA_LEVELS_SNAPSHOT:
+                filter_name = "data_level"
+                next_preset = AggPreset.DATES_SUMMARY
+            case _:
+                return
+
+        for column in columns:
+            with self.table_elem.add_slot(f"header-cell-{column}"):
+                with self.table_elem.header(column):
+                    ui.button(
+                        column,
+                        on_click=lambda _event, value=column: self._drill_down(
+                            filter_name=filter_name,
+                            value=value,
+                            next_preset=next_preset,
+                        ),
+                    ).props("flat dense no-caps").classes("w-full")
 
     @staticmethod
     def _display_data(data_df: pd.DataFrame) -> pd.DataFrame:

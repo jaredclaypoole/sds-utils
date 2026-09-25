@@ -84,17 +84,27 @@ class StringFilterMenu(UIElem):
         )
         self.update_values(values, select_new_values=select_new_values)
 
-    def render_header(self, table: Table, label: str) -> None:
+    def render_header(
+        self,
+        table: Table,
+        label: str,
+        *,
+        disabled: bool = False,
+    ) -> None:
         """Render this filter as a dropdown in its table column header."""
         with table.add_slot(f"header-cell-{self.filter.name}"):
             with table.header(self.filter.name):
-                with ui.button(label, icon="filter_list").props("flat dense no-caps"):
+                props = (
+                    "flat dense no-caps disable" if disabled else "flat dense no-caps"
+                )
+                with ui.button(label, icon="filter_list").props(props):
                     with ui.menu():
                         self.build()
 
-    def render_dropdown(self, label: str) -> None:
+    def render_dropdown(self, label: str, *, disabled: bool = False) -> None:
         """Render this filter as a standalone dropdown control."""
-        with ui.dropdown_button(label, icon="filter_list").props("outline no-caps"):
+        props = "outline no-caps disable" if disabled else "outline no-caps"
+        with ui.dropdown_button(label, icon="filter_list").props(props):
             self.build()
 
     def _build_nodes(self, spec: StrHierarchySpec) -> list[CheckboxNode]:
