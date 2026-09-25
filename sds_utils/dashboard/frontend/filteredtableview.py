@@ -116,6 +116,7 @@ class FilteredTableView(FilteredTableViewBase):
                     disabled_filters=self.navigator.disabled_filters,
                     drilldown_filter=self.navigator.drilldown_filter,
                     on_drill_down=self.navigator.drill_down,
+                    on_dates_row_drill_down=self.navigator.drill_down_dates_row,
                     agg_spec=self.navigator.agg_spec,
                     on_toggle_grouping=self.navigator.toggle_extra_column,
                 ),

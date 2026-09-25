@@ -1,6 +1,5 @@
 """Aggregation-pane navigation and temporary drill-down filters."""
 
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -29,7 +28,15 @@ class PaneState:
     """Restorable aggregation and temporary-filter state."""
 
     agg_spec: AggSpec
-    temporary_filters: dict[str, str]
+    temporary_filters: dict[str, "TemporaryFilter"]
+
+
+@dataclass(frozen=True)
+class TemporaryFilter:
+    """Backend filter arguments and their human-readable selected value."""
+
+    arguments: dict[str, Any]
+    display_value: str
 
 
 class PaneNavigator(UIElem):
@@ -46,7 +53,7 @@ class PaneNavigator(UIElem):
             for preset in AggPreset
         }
         self.agg_spec = self._agg_specs[active_preset].model_copy(deep=True)
-        self.temporary_filters: dict[str, str] = {}
+        self.temporary_filters: dict[str, TemporaryFilter] = {}
         self._history: list[PaneState] = []
         self._on_change = on_change
         self._setting_select = False
@@ -93,8 +100,8 @@ class PaneNavigator(UIElem):
         effective = {
             name: arguments.copy() for name, arguments in filter_arguments.items()
         }
-        for name, value in self.temporary_filters.items():
-            effective.setdefault(name, {})["included_values_regex"] = re.escape(value)
+        for name, filter_ in self.temporary_filters.items():
+            effective[name] = filter_.arguments.copy()
         return effective
 
     def drill_down(self, value: str) -> None:
@@ -109,9 +116,43 @@ class PaneNavigator(UIElem):
                 temporary_filters=self.temporary_filters.copy(),
             )
         )
-        self.temporary_filters[filter_name] = value
+        self.temporary_filters[filter_name] = TemporaryFilter(
+            arguments={"included_values": [value]},
+            display_value=value,
+        )
         self._activate_preset(next_preset)
         self._set_select(next_preset)
+        self._state_changed()
+
+    def drill_down_dates_row(self, row: dict[str, Any]) -> None:
+        """Open raw rows matching one dates-summary result row."""
+        if self.agg_spec.preset is not AggPreset.DATES_SUMMARY:
+            return
+        self._history.append(
+            PaneState(
+                agg_spec=self.agg_spec.model_copy(deep=True),
+                temporary_filters=self.temporary_filters.copy(),
+            )
+        )
+        for name in self.agg_spec.extra_columns:
+            value = row.get(name)
+            normalized = (
+                None
+                if value is None or str(value) in {"nan", "<NA>", "None"}
+                else str(value)
+            )
+            self.temporary_filters[name] = TemporaryFilter(
+                arguments={"included_values": [normalized]},
+                display_value=normalized or "None",
+            )
+        for name in ("start_date", "end_date"):
+            value = str(row[name])
+            self.temporary_filters[name] = TemporaryFilter(
+                arguments={"value": value},
+                display_value=value,
+            )
+        self._activate_preset(AggPreset.RAW)
+        self._set_select(AggPreset.RAW)
         self._state_changed()
 
     def toggle_extra_column(self, column: str) -> None:
@@ -180,10 +221,10 @@ class PaneNavigator(UIElem):
                 ui.button("Back", icon="arrow_back", on_click=self._go_back).props(
                     "flat no-caps"
                 )
-            for name, value in self.temporary_filters.items():
+            for name, filter_ in self.temporary_filters.items():
                 label = name.replace("_", " ").title()
                 ui.chip(
-                    f"{label}: {value}",
+                    f"{label}: {filter_.display_value}",
                     removable=True,
                     on_value_change=lambda event, filter_name=name: (
                         self._remove_filter(filter_name) if not event.value else None

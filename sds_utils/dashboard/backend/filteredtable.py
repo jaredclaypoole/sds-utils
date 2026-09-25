@@ -16,6 +16,7 @@ from .filtersbase import (
     FiltersBase,
     StrHierarchySpec,
     StringRegisteredFilter,
+    filter_property,
 )
 
 
@@ -61,6 +62,24 @@ class Filters(FiltersBase):
             other="Long",
         ),
     )
+
+    @filter_property
+    def start_date(
+        self,
+        data_df: pd.DataFrame,
+        value: str,
+    ) -> pd.DataFrame:
+        """Keep rows whose partition start date matches an ISO date."""
+        return data_df[data_df["start_date"].dt.strftime("%Y-%m-%d") == value]
+
+    @filter_property
+    def end_date(
+        self,
+        data_df: pd.DataFrame,
+        value: str,
+    ) -> pd.DataFrame:
+        """Keep rows whose partition end date matches an ISO date."""
+        return data_df[data_df["end_date"].dt.strftime("%Y-%m-%d") == value]
 
 
 class FilteredTable:

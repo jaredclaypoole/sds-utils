@@ -25,6 +25,7 @@ class TableRenderOptions:
     disabled_filters: set[str]
     drilldown_filter: str | None
     on_drill_down: Callable[[str], None]
+    on_dates_row_drill_down: Callable[[dict[str, object]], None]
     agg_spec: AggSpec
     on_toggle_grouping: Callable[[str], None]
 
@@ -62,7 +63,9 @@ class DashboardTableRenderer:
             for column in DATES_SUMMARY_EXTRA_COLUMNS:
                 if column not in display_df:
                     display_df[column] = None
+            display_df["_drilldown"] = None
             fixed = [
+                "_drilldown",
                 *DATES_SUMMARY_EXTRA_COLUMNS,
                 "start_date",
                 "end_date",
@@ -98,6 +101,8 @@ class DashboardTableRenderer:
         self._render_partition_links()
         self._render_status_badges()
         self._render_status_counts(status_columns)
+        if options.agg_spec.preset is AggPreset.DATES_SUMMARY:
+            self._render_dates_row_drill_down(options.on_dates_row_drill_down)
         if options.drilldown_filter is not None:
             self._render_drill_down_headers(status_columns, options.on_drill_down)
         grouping = None
@@ -113,6 +118,34 @@ class DashboardTableRenderer:
             disabled=options.disabled_filters,
             grouping=grouping,
         )
+
+    def _render_dates_row_drill_down(
+        self,
+        on_drill_down: Callable[[dict[str, object]], None],
+    ) -> None:
+        """Render the dates-summary row action leading to the raw table."""
+        for column in self.table.columns:
+            if column["name"] == "_drilldown":
+                column["label"] = ""
+                column["align"] = "center"
+                column["style"] = "width: 3rem"
+                break
+        self.table.add_slot(
+            "body-cell-_drilldown",
+            """
+            <q-td :props="props" class="text-center">
+                <q-btn
+                    flat
+                    dense
+                    round
+                    icon="link"
+                    color="primary"
+                    @click="$parent.$emit('datesRowDrilldown', props.row)"
+                />
+            </q-td>
+            """,
+        )
+        self.table.on("datesRowDrilldown", lambda event: on_drill_down(event.args))
 
     def _render_run_links(self, table_df: pd.DataFrame) -> None:
         if "run_id" not in table_df.columns:

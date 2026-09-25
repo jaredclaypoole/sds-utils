@@ -122,6 +122,7 @@ class StringRegisteredFilter(RegisteredFilter):
             data_df: pd.DataFrame,
             included_values_regex: str | None = None,
             excluded_values_regex: str | None = None,
+            included_values: list[str | None] | None = None,
         ) -> pd.DataFrame:
             column = property_holder["property"].filter_name
             mask = np.ones(len(data_df), dtype=bool)
@@ -129,6 +130,12 @@ class StringRegisteredFilter(RegisteredFilter):
                 mask &= data_df[column].str.fullmatch(included_values_regex, na=False)
             if excluded_values_regex is not None:
                 mask &= ~data_df[column].str.fullmatch(excluded_values_regex, na=False)
+            if included_values is not None:
+                non_null = [value for value in included_values if value is not None]
+                exact_mask = data_df[column].isin(non_null)
+                if None in included_values:
+                    exact_mask |= data_df[column].isna()
+                mask &= exact_mask
             return data_df[mask]
 
         property_ = FilterProperty(

@@ -37,6 +37,7 @@ class FilterControls:
         self.menus = {
             filter_.name: StringFilterMenu.from_filter(filter_, [], on_change)
             for filter_ in filters
+            if isinstance(filter_, StringRegisteredFilter)
         }
         self._initial_arguments: FilterArguments | None = initial_arguments
 
