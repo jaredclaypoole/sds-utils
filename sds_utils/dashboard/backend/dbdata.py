@@ -99,8 +99,8 @@ def _status(run: CachedDagsterRun, derived: DerivedJobRun | None) -> str:
     return status
 
 
-def _parse_missing_reason(missing_files: str | None) -> str | None:
-    """Determine missing_reason from the more verbose missing_files."""
+def _parse_skipped_reason(missing_files: str | None) -> str | None:
+    """Determine skipped_reason from the more verbose missing_files."""
     if missing_files is None:
         return None
     lines = [line.strip() for line in missing_files.splitlines()]
@@ -252,7 +252,7 @@ class DBDataSource(DataSourceBase):
                     "skip_info": skip_info,
                     "skip_reason": skip_reason,
                     "missing_files": missing_files,
-                    "missing_reason": _parse_missing_reason(missing_files),
+                    "skipped_reason": _parse_skipped_reason(missing_files),
                     "creation_time": run.creation_time,
                     "update_time": run.update_time,
                     "run_start_time": run.start_time,

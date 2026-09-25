@@ -18,9 +18,9 @@ def test_string_filter_handles_missing_values() -> None:
 
 
 def test_string_filter_can_match_null_exactly() -> None:
-    data_df = pd.DataFrame({"missing_reason": [None, "dependency", "other"]})
+    data_df = pd.DataFrame({"skipped_reason": [None, "dependency", "other"]})
 
-    result = Filters().missing_reason.apply(data_df, included_values=[None])
+    result = Filters().skipped_reason.apply(data_df, included_values=[None])
 
     assert result.index.tolist() == [0]
 

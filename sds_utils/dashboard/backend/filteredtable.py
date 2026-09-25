@@ -53,7 +53,7 @@ class Filters(FiltersBase):
         ),
     )
     descriptor = StringRegisteredFilter.property()
-    missing_reason = StringRegisteredFilter.property()
+    skipped_reason = StringRegisteredFilter.property()
     partition_label = StringRegisteredFilter.property(
         hierarchy=StrHierarchySpec(
             hierarchy=dict(

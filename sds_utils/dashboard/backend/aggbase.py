@@ -11,7 +11,7 @@ DATES_SUMMARY_EXTRA_COLUMNS = (
     "instrument",
     "data_level",
     "descriptor",
-    "missing_reason",
+    "skipped_reason",
 )
 
 
